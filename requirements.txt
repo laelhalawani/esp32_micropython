@@ -1,0 +1,4 @@
+esptool==4.8.1
+mpremote==1.25.0
+micropython-esp32-stubs==1.25.0.post2
+micropython-esp32-esp32_generic_c3-stubs==1.23.0.post2
