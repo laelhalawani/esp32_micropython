@@ -9,7 +9,7 @@ It leverages `esptool` for flashing firmware and `mpremote` for file system oper
 *   Flash MicroPython firmware (downloads official ESP32-C3 USB-enabled firmware by default).
 *   List available serial ports and set a default device.
 *   Upload individual files, directory contents, or entire directories to the device.
-*   Download files or entire directories from the device.
+*   Download files, directory contents, or entire directories from the device using a unified command.
 *   List files, display directory trees, and delete files/directories on the device.
 *   Run MicroPython scripts remotely.
 *   Simplified commands for common operations.
@@ -85,7 +85,7 @@ This command erases the ESP32-C3's flash and installs MicroPython firmware.
     **Shorthand Usage:**
     ```bash
     # Ensure device port is set first (e.g., esp32 device COM5)
-    esp32 flash 
+    esp32 flash
     ```
     This will use the default firmware URL.
 
@@ -115,12 +115,12 @@ This command erases the ESP32-C3's flash and installs MicroPython firmware.
     **Scenarios & Examples:**
     1.  **Upload a single file to root:**
         ```bash
-        esp32 upload main.py 
+        esp32 upload main.py
         # Result on ESP32: /main.py
         ```
     2.  **Upload a single file to a specific remote directory:**
         ```bash
-        esp32 upload utils.py lib 
+        esp32 upload utils.py lib
         # Result on ESP32: /lib/utils.py (lib/ will be created if needed)
         ```
     3.  **Upload contents of a local directory to root:**
@@ -155,39 +155,70 @@ This command erases the ESP32-C3's flash and installs MicroPython firmware.
 
 ### 4.4 Downloading Files and Directories
 
-*   **`esp32 download <remote_file_path> [local_target_path]`**
-    Downloads a single file from the ESP32 to your computer.
-    *   `remote_file_path`: The full path to the file on the ESP32 (e.g., `main.py`, `lib/utils.py`).
-    *   `local_target_path` (optional): The name/path to save the file as locally. Defaults to the remote file's basename in the current directory.
+*   **`esp32 download <remote_source_path> [local_target_path]`**
+    Downloads files or directories from the ESP32 to your computer. This command behaves similarly to `upload` but in reverse.
+
+    **Understanding `remote_source_path` and trailing slashes for directories:**
+    *   If `remote_source_path` points to a **file** on the ESP32 (e.g., `/data/log.txt`): The file is downloaded.
+    *   If `remote_source_path` points to a **directory** on the ESP32 and *ends with a `/`* (e.g., `/logs/`): The *contents* of that remote directory are downloaded into the specified `local_target_path`.
+        *   To download the contents of the root directory, use `//` (e.g., `esp32 download // local_root_backup`).
+    *   If `remote_source_path` points to a **directory** on the ESP32 and *does not end with a `/`* (e.g., `/config`): The directory `config` *itself* (including its contents) is downloaded and created within the `local_target_path`.
+
+    **Understanding `local_target_path`:**
+    *   If omitted, the download target is the current working directory (`.`) on your computer.
+    *   If provided, it specifies the local directory where items will be placed or the local filename if downloading a single file to a specific name. The tool will create this directory if it doesn't exist.
 
     **Scenarios & Examples:**
-    ```bash
-    esp32 download main.py 
-    # Saves /main.py from device to ./main.py locally
 
-    esp32 download lib/config.json backup_config.json
-    # Saves /lib/config.json from device to ./backup_config.json locally
-    ```
-
-*   **`esp32 download_all <remote_source_dir> [local_target_dir]`**
-    Recursively downloads the contents of a directory from the ESP32 to your computer.
-    *   `remote_source_dir`: The directory on the ESP32 to download (e.g., `lib`, `data`).
-    *   `local_target_dir` (optional): The local directory to save into. Defaults to a new directory with the same name as `remote_source_dir` in the CWD.
-
-    **Scenarios & Examples:**
-    ```bash
-    esp32 download_all lib
-    # Creates ./lib/ locally and copies contents of /lib from device into it.
-
-    esp32 download_all data my_backup/device_data
-    # Creates ./my_backup/device_data/ locally and copies /data/* into it.
-    ```
+    1.  **Download a remote file to the current local directory:**
+        ```bash
+        esp32 download /boot.py
+        # Result: ./boot.py locally
+        ```
+    2.  **Download a remote file to a specific local directory, keeping its name:**
+        ```bash
+        esp32 download /lib/utils.py my_local_lib
+        # Result: ./my_local_lib/utils.py locally (my_local_lib/ created if needed)
+        ```
+    3.  **Download a remote file to a specific local path and name:** (mpremote behavior for `cp :remote_file local_file_path`)
+        ```bash
+        esp32 download /data/sensor.dat backup/latest_sensor.dat
+        # Result: ./backup/latest_sensor.dat locally
+        ```
+    4.  **Download a remote directory (e.g., `logs`) and its contents into the current local directory:**
+        ```bash
+        esp32 download /logs
+        # Result: ./logs/... locally (creates a 'logs' folder in CWD)
+        ```
+    5.  **Download a remote directory (e.g., `data`) and its contents into a specified local directory (`backup_data`):**
+        ```bash
+        esp32 download /data backup_data
+        # Result: ./backup_data/data/... locally
+        ```
+    6.  **Download the *contents* of a remote directory (e.g., `/app/`) into the current local directory:**
+        ```bash
+        esp32 download /app/ .
+        # Result: Files and subdirectories from /app/ on device are copied into ./ locally
+        # Example: if /app/main.py and /app/gfx/img.png exist,
+        # they become ./main.py and ./gfx/img.png
+        ```
+    7.  **Download the *contents* of a remote directory (e.g., `/lib/`) into a specified local directory (`local_libs_backup`):**
+        ```bash
+        esp32 download /lib/ local_libs_backup
+        # Result: Contents of /lib/ on device are copied into ./local_libs_backup/ locally
+        # Example: if /lib/tool.py exists, it becomes ./local_libs_backup/tool.py
+        ```
+    8.  **Download the *contents* of the device's root directory into a local directory `full_backup`:**
+        ```bash
+        esp32 download // full_backup
+        # Result: All files and folders from device root copied into ./full_backup/
+        ```
 
 ### 4.5 Managing Remote Filesystem
 
 *   **`esp32 list [remote_directory]`** or **`esp32 ls [remote_directory]`**
-    Lists files and directories on the ESP32.
-    *   `remote_directory` (optional): The directory to list. Defaults to the root (`/`).
+    Lists files and directories on the ESP32. The listing is recursive from the given path.
+    *   `remote_directory` (optional): The directory to list (e.g., `/lib`). Defaults to the root (`/`), listing top-level items.
 
     **Shorthand Usage:**
     ```bash
@@ -208,25 +239,26 @@ This command erases the ESP32-C3's flash and installs MicroPython firmware.
 *   **`esp32 delete [remote_path_to_delete]`**
     Deletes a file or directory (recursively) on the ESP32.
     *   `remote_path_to_delete` (optional): The file or directory to delete (e.g., `old_main.py`, `temp_files/`).
-    *   If omitted, the command will prompt for confirmation to **delete all contents of the root directory**. **Use with extreme caution!**
+    *   If omitted or set to `/`, the command will prompt for confirmation to **delete all contents of the root directory**. **Use with extreme caution!**
 
     **Shorthand Usage:**
     ```bash
     esp32 delete old_script.py
     esp32 delete my_module/
     esp32 delete # Prompts to wipe root
+    esp32 delete / # Also prompts to wipe root
     ```
 
 ### 4.6 Running Scripts
 
 *   **`esp32 run [script_name]`**
     Executes a MicroPython script that exists on the ESP32's filesystem.
-    *   `script_name` (optional): The path to the script on the device (e.g., `app.py`, `tests/run_tests.py`). Defaults to `main.py`.
+    *   `script_name` (optional): The path to the script on the device (e.g., `app.py`, `tests/run_tests.py`). Defaults to `main.py`. Path is relative to the device root.
     The script's output (and any errors) will be displayed in your terminal.
 
     **Shorthand Usage:**
     ```bash
-    esp32 run 
+    esp32 run
     # Executes /main.py on device
 
     esp32 run services/scanner.py
@@ -238,7 +270,7 @@ This command erases the ESP32-C3's flash and installs MicroPython firmware.
 *   **Connection Issues / Device Not Detected:**
     *   Ensure the USB-C cable supports data transfer (not just charging).
     *   Verify the correct COM port is selected (`esp32 devices`, `esp32 device <PORT>`).
-    *   For flashing or if the device is unresponsive, make sure it's in **bootloader mode**. See Section 4.2 or `docs/identify_board.md`.
+    *   For flashing or if the device is unresponsive, make sure it's in **bootloader mode**. See Section 4.2 or `docs_md/identify_board.md`.
     *   Check if other serial terminal programs (Arduino IDE Serial Monitor, PuTTY, etc.) are holding the port open. Close them.
 
 *   **`esptool` or `mpremote` command not found:**
@@ -252,7 +284,7 @@ This command erases the ESP32-C3's flash and installs MicroPython firmware.
         ```bash
         esp32 flash path/to/your_downloaded_firmware.bin
         ```
-    *   After flashing, physically reset the device before testing.
+    *   After flashing, physically reset the device (unplug/replug or RST button) before testing.
 
 *   **Upload/Download/List commands fail with "No response or mpremote error":**
     *   Ensure MicroPython is running correctly on the device. Try `esp32 device` to test basic connectivity.
