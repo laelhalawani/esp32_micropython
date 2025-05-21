@@ -464,413 +464,90 @@ def run_script(script="main.py"):
         sys.exit(1)
 
 
-def download_file(remote_path, local_path=None):
+def cmd_download(remote_source_arg, local_destination_arg=None):
     global DEVICE_PORT
-    rp_norm = remote_path.lstrip("/")
-    lp_str = local_path or rp_norm
-    abs_local_target_path = Path(os.path.abspath(lp_str))
-    
-    print(f"Checking remote file ':{rp_norm}'...")
-    path_type, _ = get_remote_path_stat(rp_norm)
-    if path_type is None:
-        print(f"Error: Remote file ':{rp_norm}' not found.", file=sys.stderr)
-        sys.exit(1)
-    if path_type != 'file':
-        print(f"Error: Remote path ':{rp_norm}' is not a file.", file=sys.stderr)
+
+    remote_src_clean = remote_source_arg.strip()
+    if not remote_src_clean or remote_src_clean == "/":
+        print("Error: Remote source cannot be root for this download operation. Specify a file or directory.", file=sys.stderr)
         sys.exit(1)
 
-    if abs_local_target_path.parent:
-        abs_local_target_path.parent.mkdir(parents=True, exist_ok=True)
+    had_remote_trailing_slash = remote_src_clean.endswith("/")
+    # remote_path_for_stat should not have a trailing slash for get_remote_path_stat
+    # but keep original for mpremote if it had a slash (for contents copying)
+    remote_path_on_device_for_stat = remote_src_clean.rstrip("/")
 
-    print(f"Downloading ':{rp_norm}' to '{abs_local_target_path}'...")
-    result = run_mpremote_command(["fs", "cp", f":{rp_norm}", str(abs_local_target_path)], suppress_output=True)
+    print(f"Checking remote path ':{remote_path_on_device_for_stat}'...")
+    remote_type, _ = get_remote_path_stat(remote_path_on_device_for_stat)
+
+    if remote_type is None:
+        print(f"Error: Remote path ':{remote_path_on_device_for_stat}' not found on device.", file=sys.stderr)
+        sys.exit(1)
+    if remote_type == "unknown":
+        print(f"Error: Remote path ':{remote_path_on_device_for_stat}' is of an unknown type.", file=sys.stderr)
+        sys.exit(1)
+
+    # Determine local destination path
+    local_base_destination_str = local_destination_arg or "."
+    abs_local_base_dest_path = Path(local_base_destination_str).resolve()
+
+    cp_args = ["fs", "cp"]
+    success_msg = ""
+
+    if remote_type == "file":
+        if had_remote_trailing_slash: # e.g. "file.txt/" which is unusual but handle defensively
+            print(f"Warning: Trailing slash on a remote file path ':{remote_src_clean}' is ignored. Treating as file ':{remote_path_on_device_for_stat}'.")
+        
+        mpremote_remote_spec = f":{remote_path_on_device_for_stat}"
+        remote_file_basename = Path(remote_path_on_device_for_stat).name
+
+        if abs_local_base_dest_path.is_dir() or \
+           (not abs_local_base_dest_path.exists() and local_destination_arg and local_destination_arg.endswith(("/", os.sep))):
+            # Target is an existing directory, or a path ending with slash (new dir)
+            abs_local_base_dest_path.mkdir(parents=True, exist_ok=True) # Ensure dir exists
+            final_local_target_path = abs_local_base_dest_path / remote_file_basename
+        else:
+            # Target is a file name, or a path not ending with slash (new file, possibly in new dir)
+            final_local_target_path = abs_local_base_dest_path
+            final_local_target_path.parent.mkdir(parents=True, exist_ok=True)
+
+        cp_args.extend([mpremote_remote_spec, str(final_local_target_path)])
+        print(f"Downloading remote file ':{remote_path_on_device_for_stat}' to '{final_local_target_path}'...")
+        success_msg = "File download complete."
+
+    elif remote_type == "dir":
+        cp_args.append("-r") # Recursive for directories
+
+        if had_remote_trailing_slash:
+            # Download contents of remote_dir/ into local_dest/
+            mpremote_remote_spec = f":{remote_path_on_device_for_stat}/" # mpremote needs trailing slash for contents
+            final_local_target_dir = abs_local_base_dest_path
+            final_local_target_dir.mkdir(parents=True, exist_ok=True)
+            
+            cp_args.extend([mpremote_remote_spec, str(final_local_target_dir)])
+            print(f"Downloading contents of remote directory ':{remote_path_on_device_for_stat}/' to '{final_local_target_dir}/'...")
+            success_msg = "Directory contents download complete."
+        else:
+            # Download remote_dir itself into local_dest/
+            # mpremote cp -r :remote_dir local_dest/  => results in local_dest/remote_dir
+            mpremote_remote_spec = f":{remote_path_on_device_for_stat}"
+            final_local_target_parent_dir = abs_local_base_dest_path
+            final_local_target_parent_dir.mkdir(parents=True, exist_ok=True)
+
+            cp_args.extend([mpremote_remote_spec, str(final_local_target_parent_dir)])
+            remote_dir_basename = Path(remote_path_on_device_for_stat).name
+            print(f"Downloading remote directory ':{remote_path_on_device_for_stat}' into '{final_local_target_parent_dir / remote_dir_basename}'...")
+            success_msg = "Directory download complete."
+
+    result = run_mpremote_command(cp_args, suppress_output=True)
 
     if result and result.returncode == 0:
-        print("Download complete.")
+        print(success_msg)
     else:
-        err_msg = result.stderr.strip() if result and result.stderr else "Download failed"
-        print(f"Error downloading ':{rp_norm}': {err_msg}", file=sys.stderr)
+        err_msg = result.stderr.strip() if result and result.stderr else "Download operation failed"
+        if result and not err_msg and result.stdout: err_msg = result.stdout.strip()
+        print(f"Error during download: {err_msg}", file=sys.stderr)
         sys.exit(1)
-
-
-def download_all(remote_dir, local_dir_str=None):
-    global DEVICE_PORT
-    rd_norm = remote_dir.strip("/")
-    if not rd_norm:
-        print("Error: Remote directory for download_all cannot be root. Specify a directory name.", file=sys.stderr)
-        sys.exit(1)
-
-    print(f"Checking remote directory ':{rd_norm}'...")
-    path_type, _ = get_remote_path_stat(rd_norm)
-    if path_type is None:
-        print(f"Error: Remote directory ':{rd_norm}' not found.", file=sys.stderr)
-        sys.exit(1)
-    if path_type != 'dir':
-        print(f"Error: Remote path ':{rd_norm}' is not a directory.", file=sys.stderr)
-        sys.exit(1)
-
-    ld_final_str = local_dir_str or rd_norm
-    abs_local_dest_path = Path(os.path.abspath(ld_final_str))
-    abs_local_dest_path.mkdir(parents=True, exist_ok=True)
-    
-    print(f"Downloading contents of ':{rd_norm}/' to '{abs_local_dest_path}/'...")
-    result = run_mpremote_command([
-        "fs", "cp", "-r",
-        f":{rd_norm}", str(abs_local_dest_path) 
-    ], suppress_output=True)
-
-    if result and result.returncode == 0:
-        print("Recursive download complete.")
-    else:
-        err_msg = result.stderr.strip() if result and result.stderr else "Recursive download failed"
-        print(f"Error downloading ':{rd_norm}': {err_msg}", file=sys.stderr)
-        sys.exit(1)
-
-
-def list_remote_capture(remote_dir_arg=None): 
-    global DEVICE_PORT
-    if not DEVICE_PORT: return []
-
-    path_for_walk = f"/{remote_dir_arg.strip('/')}" if remote_dir_arg and remote_dir_arg.strip('/') else "/"
-    
-    code = f"""\\
-import uos
-def _walk(p):
-    try:
-        items = uos.ilistdir(p) 
-    except OSError as e:
-        return
-    for name, typ, *_ in items:
-        base_path = p.rstrip('/')
-        item_full_path = base_path + '/' + name if base_path != '' else '/' + name
-        print(item_full_path) 
-        if typ == 0x4000: # STAT_DIR
-            _walk(item_full_path)
-_walk('{path_for_walk}')
-"""
-    lines = run_cmd_output(["exec", code])
-    return [line for line in lines if line.startswith('/')]
-
-
-def list_remote(remote_dir=None):
-    global DEVICE_PORT
-    normalized_remote_dir = (remote_dir or "").strip("/")
-    display_dir_name = f":{normalized_remote_dir or '/'}"
-    
-    if normalized_remote_dir:
-        path_type, _ = get_remote_path_stat(normalized_remote_dir)
-        if path_type is None:
-            print(f"Error: Remote path '{display_dir_name}' not found.", file=sys.stderr)
-            return
-        if path_type == 'file':
-            print(f"Error: '{display_dir_name}' is a file, not a directory.", file=sys.stderr)
-            return
-    
-    print(f"Listing contents of '{display_dir_name}'...")
-    all_paths_abs = list_remote_capture(normalized_remote_dir)
-
-    if not all_paths_abs:
-        print(f"Directory '{display_dir_name}' is empty.")
-        return
-    
-    displayed_any = False
-    if not normalized_remote_dir:
-        for path_str in sorted(all_paths_abs):
-            print(path_str) 
-            displayed_any = True
-    else:
-        for path_str in sorted(all_paths_abs):
-            if path_str.startswith(f"/{normalized_remote_dir}/") or path_str == f"/{normalized_remote_dir}":
-                print(path_str.lstrip('/'))
-                displayed_any = True
-    
-    if not displayed_any :
-         print(f"Directory '{display_dir_name}' is empty.")
-
-
-def tree_remote(remote_dir=None):
-    global DEVICE_PORT
-    base_path_str_norm = (remote_dir or "").strip("/")
-    display_root_name = f":{base_path_str_norm or '/'}"
-
-    if base_path_str_norm:
-        path_type, _ = get_remote_path_stat(base_path_str_norm)
-        if path_type is None:
-            print(f"Error: Remote directory '{display_root_name}' not found.", file=sys.stderr)
-            return
-        if path_type == 'file':
-            print(f"Error: '{display_root_name}' is a file. Cannot display as tree.", file=sys.stderr)
-            return
-    
-    print(f"Tree for '{display_root_name}' on device:")
-    lines_abs = list_remote_capture(base_path_str_norm)
-    
-    if not lines_abs:
-        print(f"Directory '{display_root_name}' is empty.")
-        return
-
-    paths_for_tree_build = []
-    if not base_path_str_norm:
-        paths_for_tree_build = [Path(p.lstrip('/')) for p in lines_abs if p != "/"]
-    else:
-        prefix_to_remove = f"/{base_path_str_norm}/"
-        for line_abs in lines_abs:
-            if line_abs.startswith(prefix_to_remove):
-                relative_part = line_abs[len(prefix_to_remove):]
-                if relative_part:
-                    paths_for_tree_build.append(Path(relative_part))
-
-    if not paths_for_tree_build and (not base_path_str_norm or (base_path_str_norm and path_type == 'dir')):
-        print(f"Directory '{display_root_name}' is empty or contains no listable items for tree.")
-        return
-
-    structure = {}
-    for p_obj in sorted(list(set(paths_for_tree_build))):
-        current_level = structure
-        parts = [part for part in p_obj.parts if part and part != '/']
-        if not parts: continue
-        for part_idx, part in enumerate(parts):
-            if part_idx == len(parts) - 1:
-                current_level = current_level.setdefault(part, {})
-            else:
-                current_level = current_level.setdefault(part, {})
-            
-    def print_tree_nodes(node, prefix=""):
-        children = sorted(node.keys())
-        for i, child_name in enumerate(children):
-            connector = "└── " if i == len(children) - 1 else "├── "
-            print(f"{prefix}{connector}{child_name}")
-            if node[child_name]:
-                new_prefix = prefix + ("    " if i == len(children) - 1 else "│   ")
-                print_tree_nodes(node[child_name], new_prefix)
-
-    if not base_path_str_norm:
-        print(".") 
-        print_tree_nodes(structure, "")
-    else:
-        print(f". ({base_path_str_norm})")
-        print_tree_nodes(structure, "")
-
-
-def delete_remote(remote_path_arg):
-    global DEVICE_PORT
-    is_root_delete = remote_path_arg is None or remote_path_arg.strip() in ["", "/"]
-
-    if is_root_delete:
-        print("WARNING: You are about to delete all files and directories from the root of the device.")
-        confirm = input("Are you sure? Type 'yes' to proceed: ")
-        if confirm.lower() != 'yes':
-            print("Operation cancelled.")
-            return
-
-        print("Fetching root directory contents for deletion...")
-        ls_result = run_mpremote_command(["fs", "ls", ":"], suppress_output=True)
-        
-        if not ls_result or ls_result.returncode != 0:
-            err = ls_result.stderr.strip() if ls_result and ls_result.stderr else "Failed to connect or list."
-            print(f"Error listing root directory for deletion: {err}", file=sys.stderr)
-            sys.exit(1)
-
-        raw_item_entries = ls_result.stdout.splitlines()
-        filtered_raw_entries = [line.strip() for line in raw_item_entries if line.strip() and not line.lower().startswith("ls ")]
-        
-        if not filtered_raw_entries:
-            print("Root directory is already empty.")
-            return
-
-        actual_items_to_delete = []
-        for raw_entry in filtered_raw_entries:
-            parts = raw_entry.split(maxsplit=1)
-            item_name = parts[1] if len(parts) == 2 and parts[0].isdigit() else raw_entry
-            if item_name: actual_items_to_delete.append(item_name)
-
-        if not actual_items_to_delete:
-            print("No valid items to delete after parsing root listing.")
-            return
-
-        print(f"Items to delete from root: {actual_items_to_delete}")
-        all_successful = True
-        for item_name_to_delete in actual_items_to_delete:
-            item_target_on_device = item_name_to_delete.lstrip("/")
-            item_target_for_mpremote = ":" + item_target_on_device
-            
-            print(f"Deleting '{item_target_for_mpremote}'...")
-            del_result = run_mpremote_command(["fs", "rm", "-r", item_target_for_mpremote], suppress_output=True)
-            
-            if del_result and del_result.returncode == 0:
-                #print(f"  Deleted '{item_target_for_mpremote}'.")
-                pass
-            else:
-                all_successful = False
-                err_msg = del_result.stderr.strip() if del_result and del_result.stderr else "Deletion failed"
-                if del_result and not err_msg and del_result.stdout: err_msg = del_result.stdout.strip()
-                print(f"  Error deleting '{item_target_for_mpremote}': {err_msg}", file=sys.stderr)
-        
-        if all_successful: print("Deletion of root contents complete.")
-        else:
-            print("Deletion of root contents attempted, but some errors occurred.", file=sys.stderr)
-            sys.exit(1) 
-    else: 
-        normalized_path = remote_path_arg.strip('/')
-        mpremote_target_path = ":" + normalized_path
-        path_type, _ = get_remote_path_stat(normalized_path)
-
-        if path_type is None:
-            print(f"File/Directory '{mpremote_target_path}' does not exist on device.")
-            return
-
-        print(f"Deleting '{mpremote_target_path}'...")
-        del_result = run_mpremote_command(["fs", "rm", "-r", mpremote_target_path], suppress_output=True)
-
-        if del_result and del_result.returncode == 0:
-            print(f"Deleted '{mpremote_target_path}'.")
-        else:
-            err_msg = del_result.stderr.strip() if del_result and del_result.stderr else "Deletion failed"
-            if del_result and not err_msg and del_result.stdout: err_msg = del_result.stdout.strip()
-            print(f"Error deleting '{mpremote_target_path}': {err_msg}", file=sys.stderr)
-            sys.exit(1)
-
-
-
-def cmd_flash(firmware_source, baud_rate_str="460800"):
-    global DEVICE_PORT
-    
-    # 1. Check for device port FIRST
-    if not DEVICE_PORT:
-        print("Error: Device port not set. Cannot proceed with flashing.", file=sys.stderr)
-        print("Use 'esp32 devices` to see available devices then `esp32 device <PORT_NAME>' to set the port.")
-        sys.exit(1)
-    # else: # This was in your provided code, good for confirming port if set.
-    # print(f"Using device port: {DEVICE_PORT}") # Optional: uncomment if you want to see the port used.
-
-    # 2. Print firmware source information (only if using default AND port is set)
-    # This now happens AFTER the port check above.
-    if firmware_source == DEFAULT_FIRMWARE_URL or "micropython.org/resources/firmware/" in DEFAULT_FIRMWARE_URL:
-        print(f"Using official default firmware URL: {DEFAULT_FIRMWARE_URL}")
-        print("If you have a specific firmware .bin URL or local file, please provide it as an argument to the flash command.")
-
-    print("\nIMPORTANT: Ensure your ESP32-C3 is in bootloader mode.")
-    print("To do this: Unplug USB, press and HOLD the BOOT button, plug in USB, wait 2-3 seconds, then RELEASE BOOT button.")
-    
-    try:
-        subprocess.run(["esptool", "--version"], capture_output=True, check=False, text=True)
-    except FileNotFoundError:
-        print("Error: esptool command not found. Is it installed and in PATH? (esptool is required for flashing).", file=sys.stderr)
-        print("You can install it with: pip install esptool")
-        sys.exit(1)
-
-    if input("Proceed with flashing? (yes/no): ").lower() != 'yes':
-        print("Flashing cancelled by user.")
-        sys.exit(0)
-
-    actual_firmware_file_to_flash = None
-    downloaded_temp_file = None
-
-    try:
-        if firmware_source.startswith("http://") or firmware_source.startswith("https://"):
-            print(f"Downloading firmware from: {firmware_source}")
-            try:
-                with urllib.request.urlopen(firmware_source) as response, \
-                     tempfile.NamedTemporaryFile(delete=False, suffix=".bin", mode='wb') as tmp_file:
-                    
-                    total_size = response.getheader('Content-Length')
-                    if total_size:
-                        total_size = int(total_size)
-                        print("File size:", total_size // 1024, "KB")
-                    else:
-                        print("File size: Unknown (Content-Length header not found)")
-
-                    downloaded_size = 0
-                    chunk_size = 8192
-                    
-                    while True:
-                        chunk = response.read(chunk_size)
-                        if not chunk:
-                            break
-                        tmp_file.write(chunk)
-                        downloaded_size += len(chunk)
-
-                        if total_size:
-                            progress = (downloaded_size / total_size) * 100
-                            bar_length = 40
-                            filled_length = int(bar_length * downloaded_size // total_size)
-                            bar = '█' * filled_length + '-' * (bar_length - filled_length)
-                            sys.stdout.write(f"\rDownloading: [{bar}] {progress:.1f}% ({downloaded_size//1024}/{total_size//1024} KB)")
-                            sys.stdout.flush()
-                        else:
-                            sys.stdout.write(f"\rDownloading: {downloaded_size // 1024} KB...")
-                            sys.stdout.flush()
-                    
-                    sys.stdout.write('\n')
-                    actual_firmware_file_to_flash = tmp_file.name
-                    downloaded_temp_file = actual_firmware_file_to_flash
-                print(f"Firmware downloaded successfully to temporary file: {actual_firmware_file_to_flash}")
-
-            except urllib.error.URLError as e:
-                print(f"\nError downloading firmware: {e.reason}", file=sys.stderr)
-                if hasattr(e, 'code'):
-                    print(f"HTTP Error Code: {e.code}", file=sys.stderr)
-                sys.exit(1)
-            except Exception as e:
-                print(f"\nAn unexpected error occurred during download: {e}", file=sys.stderr)
-                sys.exit(1)
-        else:
-            local_firmware_path = Path(firmware_source)
-            if not local_firmware_path.is_file():
-                print(f"Error: Local firmware file not found at '{local_firmware_path}'", file=sys.stderr)
-                sys.exit(1)
-            actual_firmware_file_to_flash = str(local_firmware_path)
-            print(f"Using local firmware file: {actual_firmware_file_to_flash}")
-
-        print(f"\nStep 1: Erasing flash on {DEVICE_PORT}...")
-        erase_args = ["--chip", "esp32c3", "--port", DEVICE_PORT, "erase_flash"]
-        erase_result = run_esptool_command(erase_args)
-        if not erase_result or erase_result.returncode != 0:
-            err_msg = erase_result.stderr.strip() if erase_result and erase_result.stderr else "Erase command failed."
-            print(f"Error erasing flash: {err_msg}", file=sys.stderr)
-            if "A fatal error occurred: Could not connect to an Espressif device" in err_msg or \
-               "Failed to connect to ESP32-C3" in err_msg :
-                 print("This commonly indicates the device is not in bootloader mode or a connection issue.", file=sys.stderr)
-                 print("Please ensure you have followed the BOOT button procedure correctly.", file=sys.stderr)
-            sys.exit(1)
-        print("Flash erase completed successfully.")
-
-        print(f"\nStep 2: Writing firmware '{Path(actual_firmware_file_to_flash).name}' to {DEVICE_PORT} at baud {baud_rate_str}...")
-        write_args = [
-            "--chip", "esp32c3",
-            "--port", DEVICE_PORT,
-            "--baud", baud_rate_str,
-            "write_flash",
-            "-z", "0x0",
-            actual_firmware_file_to_flash
-        ]
-        write_result = run_esptool_command(write_args)
-        if not write_result or write_result.returncode != 0:
-            err_msg = write_result.stderr.strip() if write_result and write_result.stderr else "Write flash command failed."
-            print(f"Error writing firmware: {err_msg}", file=sys.stderr)
-            sys.exit(1)
-        print("Firmware writing completed successfully.")
-
-        print("\nStep 3: Verifying MicroPython installation...")
-        print("Waiting a few seconds for device to reboot...")
-        import time
-        time.sleep(5) 
-
-        verified, msg = test_micropython_presence(DEVICE_PORT)
-        print(msg)
-        if not verified:
-            print("MicroPython verification failed. The board may not have rebooted correctly, or flashing was unsuccessful despite esptool's report.", file=sys.stderr)
-            print("Try manually resetting the device and then 'esp32 device' to test.", file=sys.stderr)
-            sys.exit(1)
-        
-        print("\nMicroPython flashed and verified successfully!")
-
-    finally:
-        if downloaded_temp_file:
-            try:
-                os.remove(downloaded_temp_file)
-            except OSError as e:
-                print(f"Warning: Could not delete temporary firmware file {downloaded_temp_file}: {e}", file=sys.stderr)
 
 def main():
     global DEVICE_PORT
@@ -915,12 +592,11 @@ def main():
     list_parser.add_argument("remote_directory", nargs='?', default=None, metavar="REMOTE_DIR", help="Remote directory (default: root).")
     tree_parser = subparsers.add_parser("tree", help="Display remote file tree.")
     tree_parser.add_argument("remote_directory", nargs='?', default=None, metavar="REMOTE_DIR", help="Remote directory (default: root).")
-    dl_parser = subparsers.add_parser("download", help="Download file from ESP32.")
-    dl_parser.add_argument("remote_file_path", metavar="REMOTE_PATH", help="Remote file to download.")
-    dl_parser.add_argument("local_target_path", nargs='?', default=None, metavar="LOCAL_PATH", help="Local path to save (default: same name).")
-    dl_all_parser = subparsers.add_parser("download_all", help="Recursively download directory from ESP32.")
-    dl_all_parser.add_argument("remote_source_dir", metavar="REMOTE_DIR", help="Remote directory to download.")
-    dl_all_parser.add_argument("local_target_dir", nargs='?', default=None, metavar="LOCAL_DIR", help="Local directory to save into.")
+    
+    dl_parser = subparsers.add_parser("download", help="Download file/directory from ESP32. Mirrors 'upload' logic.")
+    dl_parser.add_argument("remote_source", metavar="REMOTE_SRC", help="Remote file/dir. Trailing '/' on dir downloads contents.")
+    dl_parser.add_argument("local_destination", nargs='?', default=None, metavar="LOCAL_DEST", help="Local path/dir. If omitted, CWD is used.")
+    
     del_parser = subparsers.add_parser("delete", help="Delete file/directory on ESP32.")
     del_parser.add_argument("remote_path_to_delete", metavar="REMOTE_PATH", nargs='?', default=None, help="Remote path. Omitting deletes root contents (confirm).")
     up_all_parser = subparsers.add_parser("upload_all_cwd", help="[Basic] Upload CWD items to ESP32 root.")
@@ -931,7 +607,7 @@ def main():
     elif "port" in cfg: DEVICE_PORT = cfg["port"]
     
     # --- ADDED "flash" ---
-    commands_needing_port = ["device", "upload", "run", "ls", "list", "tree", "download", "download_all", "delete", "upload_all_cwd", "flash"]
+    commands_needing_port = ["device", "upload", "run", "ls", "list", "tree", "download", "delete", "upload_all_cwd", "flash"]
     is_device_command_setting_port = args.cmd == "device" and args.port_name
     is_device_command_testing_port = args.cmd == "device" and not args.port_name and DEVICE_PORT
 
@@ -966,8 +642,7 @@ def main():
     elif args.cmd == "run": run_script(args.script_name)
     elif args.cmd == "ls" or args.cmd == "list": list_remote(args.remote_directory)
     elif args.cmd == "tree": tree_remote(args.remote_directory)
-    elif args.cmd == "download": download_file(args.remote_file_path, args.local_target_path)
-    elif args.cmd == "download_all": download_all(args.remote_source_dir, args.local_target_dir)
+    elif args.cmd == "download": cmd_download(args.remote_source, args.local_destination)
     elif args.cmd == "delete": delete_remote(args.remote_path_to_delete)
     elif args.cmd == "upload_all_cwd": upload_all()
 
