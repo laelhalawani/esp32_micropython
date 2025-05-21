@@ -25,7 +25,7 @@ Before you begin, it's crucial to correctly identify your ESP32-C3 board and ens
     *   Specific pin labels (refer to board documentation if available).
     *   A power LED.
 
-**For a detailed guide on board identification, pinouts, and establishing a stable USB connection (especially the BOOT button procedure for flashing), please refer to the guide: [`docs/identify_board.md`](docs/identify_board.md).**
+**For a detailed guide on board identification, pinouts, and establishing a stable USB connection (especially the BOOT button procedure for flashing), please refer to the guide: [`docs_md/identify_board.md`](docs_md/identify_board.md).**
 
 ## 2. Installation
 
