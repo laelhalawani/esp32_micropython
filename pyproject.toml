@@ -43,3 +43,7 @@ esp32 = "esp32_micropython.dm:main"
 Homepage = "https://laelhalawani.github.io/esp32_micropython/"
 Repository = "https://github.com/aistack-pl/esp32-micropython"
 Bug_Tracker = "https://github.com/aistack-pl/esp32-micropython/issues"
+
+[tool.setuptools.packages.find]
+include = ["esp32_micropython*"]
+namespaces = false
