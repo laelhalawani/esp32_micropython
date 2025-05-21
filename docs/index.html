@@ -5,369 +5,522 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ESP32-MicroPython Utility</title>
     <style>
+        :root {
+            --primary-color: #2c3e50; /* Midnight Blue */
+            --secondary-color: #3498db; /* Peter River Blue */
+            --background-color: #ecf0f1; /* Clouds White */
+            --text-color: #34495e; /* Wet Asphalt */
+            --light-gray: #bdc3c7; /* Silver */
+            --very-light-gray: #f8f9f9;
+            --code-bg: #e8eaed; /* Lighter gray for code */
+            --border-radius: 6px;
+            --box-shadow: 0 2px 10px rgba(0,0,0,0.07);
+        }
+
         body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            line-height: 1.6;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+            margin: 0;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            display: flex;
+            line-height: 1.7;
         }
-        h1, h2, h3, h4 {
-            color: #333;
+
+        #sidebar {
+            width: 260px;
+            background-color: var(--primary-color);
+            color: var(--background-color);
+            padding: 25px;
+            height: 100vh;
+            position: fixed;
+            top: 0;
+            left: 0;
+            overflow-y: auto;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
         }
-        a {
-            color: #007BFF;
+
+        #sidebar h2 {
+            color: var(--secondary-color);
+            margin-top: 0;
+            font-size: 1.4em;
+            border-bottom: 1px solid var(--secondary-color);
+            padding-bottom: 10px;
+        }
+
+        #sidebar ul {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        #sidebar ul li a {
+            color: var(--light-gray);
             text-decoration: none;
+            display: block;
+            padding: 10px 15px;
+            border-radius: var(--border-radius);
+            transition: background-color 0.3s ease, color 0.3s ease;
+            font-size: 0.95em;
         }
+
+        #sidebar ul li a:hover,
+        #sidebar ul li a.active {
+            background-color: var(--secondary-color);
+            color: var(--very-light-gray);
+        }
+        #sidebar ul li ul {
+            padding-left: 20px;
+        }
+        #sidebar ul li ul li a {
+            font-size: 0.85em;
+            padding: 8px 15px;
+        }
+
+
+        #main-content {
+            margin-left: 280px; /* Width of sidebar + some padding */
+            padding: 30px 40px;
+            flex-grow: 1;
+            max-width: 900px; /* Optimal reading width */
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+            color: var(--primary-color);
+            margin-top: 1.8em;
+            margin-bottom: 0.8em;
+        }
+        h1 { font-size: 2.4em; border-bottom: 2px solid var(--light-gray); padding-bottom: 0.3em;}
+        h2 { font-size: 1.8em; border-bottom: 1px solid var(--light-gray); padding-bottom: 0.2em;}
+        h3 { font-size: 1.4em; }
+        h4 { font-size: 1.2em; }
+
+        a {
+            color: var(--secondary-color);
+            text-decoration: none;
+            font-weight: 600;
+        }
+
         a:hover {
             text-decoration: underline;
         }
+
         code {
-            background-color: #f4f4f4;
-            padding: 2px 5px;
-            border-radius: 5px;
+            background-color: var(--code-bg);
+            padding: 0.2em 0.4em;
+            margin: 0 0.1em;
+            border-radius: var(--border-radius);
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+            font-size: 0.9em;
+            color: var(--primary-color);
         }
+
         pre {
-            background-color: #f4f4f4;
-            padding: 10px;
-            border-radius: 5px;
+            background-color: var(--code-bg);
+            padding: 15px;
+            border-radius: var(--border-radius);
             overflow-x: auto;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            border: 1px solid #ddd; /* Light border for pre blocks */
         }
+
+        pre code {
+            background-color: transparent;
+            padding: 0;
+            margin: 0;
+            font-size: 0.85em;
+            line-height: 1.5;
+        }
+
         ul, ol {
-            padding-left: 20px;
+            padding-left: 25px;
+            margin-bottom: 1em;
         }
+        ul li, ol li {
+            margin-bottom: 0.5em;
+        }
+
         blockquote {
-            border-left: 5px solid #ccc;
-            margin-left: 0;
-            padding-left: 20px;
-            font-style: italic;
+            border-left: 4px solid var(--secondary-color);
+            margin: 1.5em 0;
+            padding: 0.5em 20px;
+            background-color: var(--very-light-gray);
+            color: #555;
         }
+        blockquote p {
+            margin: 0.5em 0;
+        }
+
+        strong {
+            font-weight: 600;
+        }
+
+        hr {
+            border: 0;
+            height: 1px;
+            background-color: var(--light-gray);
+            margin: 2em 0;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            body {
+                flex-direction: column;
+            }
+            #sidebar {
+                width: 100%;
+                height: auto;
+                position: static;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            }
+            #main-content {
+                margin-left: 0;
+                padding: 20px;
+            }
+        }
+
     </style>
 </head>
 <body>
-    <h1>ESP32-MicroPython Utility</h1>
+    <nav id="sidebar">
+        <h2>Navigation</h2>
+        <ul>
+            <li><a href="#features">Features</a></li>
+            <li><a href="#identifying-your-board">1. Identifying Board</a></li>
+            <li><a href="#installation">2. Installation</a></li>
+            <li><a href="#general-usage">3. General Usage</a></li>
+            <li><a href="#commands">4. Commands</a>
+                <ul>
+                    <li><a href="#selecting-your-device-port">4.1 Selecting Device Port</a></li>
+                    <li><a href="#flashing-micropython-firmware">4.2 Flashing Firmware</a></li>
+                    <li><a href="#uploading-files-and-directories">4.3 Uploading</a></li>
+                    <li><a href="#downloading-files-and-directories">4.4 Downloading</a></li>
+                    <li><a href="#managing-remote-filesystem">4.5 Managing Filesystem</a></li>
+                    <li><a href="#running-scripts">4.6 Running Scripts</a></li>
+                </ul>
+            </li>
+            <li><a href="#troubleshooting">5. Troubleshooting</a></li>
+        </ul>
+    </nav>
 
-    <p><strong><code>esp32_micropython</code></strong> is an all-in-one command-line utility designed to simplify flashing MicroPython firmware and managing file deployments on ESP32-C3 SuperMini boards (and compatible variants) that feature a built-in USB-C connector for direct serial communication.</p>
+    <main id="main-content">
+        <h1>ESP32-MicroPython Utility</h1>
 
-    <p>It leverages <code>esptool</code> for flashing firmware and <code>mpremote</code> for file system operations and REPL interaction.</p>
+        <p><strong><code>esp32_micropython</code></strong> is an all-in-one command-line utility designed to simplify flashing MicroPython firmware and managing file deployments on ESP32-C3 SuperMini boards (and compatible variants) that feature a built-in USB-C connector for direct serial communication.</p>
 
-    <h2>Features</h2>
+        <p>It leverages <code>esptool</code> for flashing firmware and <code>mpremote</code> for file system operations and REPL interaction.</p>
 
-    <ul>
-        <li>Flash MicroPython firmware (downloads official ESP32-C3 USB-enabled firmware by default).</li>
-        <li>List available serial ports and set a default device.</li>
-        <li>Upload individual files, directory contents, or entire directories to the device.</li>
-        <li>Download files or entire directories from the device.</li>
-        <li>List files, display directory trees, and delete files/directories on the device.</li>
-        <li>Run MicroPython scripts remotely.</li>
-        <li>Simplified commands for common operations.</li>
-    </ul>
+        <h2 id="features">Features</h2>
+        <ul>
+            <li>Flash MicroPython firmware (downloads official ESP32-C3 USB-enabled firmware by default).</li>
+            <li>List available serial ports and set a default device.</li>
+            <li>Upload individual files, directory contents, or entire directories to the device.</li>
+            <li>Download files, directory contents, or entire directories from the device using a unified command.</li>
+            <li>List files, display directory trees, and delete files/directories on the device.</li>
+            <li>Run MicroPython scripts remotely.</li>
+            <li>Simplified commands for common operations.</li>
+        </ul>
 
-    <h2>1. Identifying Your Board</h2>
+        <h2 id="identifying-your-board">1. Identifying Your Board</h2>
+        <p>Before you begin, it's crucial to correctly identify your ESP32-C3 board and ensure it can be stably connected to your computer.</p>
+        <ul>
+            <li><strong>Chip Markings</strong>: These boards typically use the ESP32-C3 System-on-Chip. Look for silkscreen markings on the chip like <code>ESP32-C3 FH4...</code> or similar. The general pattern is <code>ESP32-C3 XX Y ZZZZZZ T U? VVVVVVV WWWWWWWWWW</code> where <code>XX</code> indicates flash/temperature, <code>Y</code> is flash size, <code>ZZZZZZ</code> is a date/lot code, etc.</li>
+            <li><strong>Visual Cues</strong>:
+                <ul>
+                    <li>USB-C connector for power and data.</li>
+                    <li>Two push-buttons: <code>BOOT</code> (often IO0) and <code>RST</code> (Reset).</li>
+                    <li>Specific pin labels (refer to board documentation if available).</li>
+                    <li>A power LED.</li>
+                </ul>
+            </li>
+        </ul>
+        <p><strong>For a detailed guide on board identification, pinouts, and establishing a stable USB connection (especially the BOOT button procedure for flashing), please refer to the guide: <a href="docs_md/identify_board.md"><code>docs_md/identify_board.md</code></a>.</strong></p>
 
-    <p>Before you begin, it's crucial to correctly identify your ESP32-C3 board and ensure it can be stably connected to your computer.</p>
+        <h2 id="installation">2. Installation</h2>
+        <p>You can install the <code>esp32_micropython</code> utility and its dependencies (<code>esptool</code>, <code>mpremote</code>, <code>pyserial</code>) using pip:</p>
+        <pre><code>pip install esp32_micropython</code></pre>
+        <p><em>(Note: This assumes the package name <code>esp32_micropython</code> will be used if published to PyPI. If installing from local source, you'd typically use <code>pip install .</code> or <code>python setup.py install</code> from the project root.)</em></p>
+        <p>Ensure that Python and pip are correctly installed and configured in your system's PATH.</p>
 
-    <ul>
-        <li><strong>Chip Markings</strong>: These boards typically use the ESP32-C3 System-on-Chip. Look for silkscreen markings on the chip like <code>ESP32-C3 FH4...</code> or similar. The general pattern is <code>ESP32-C3 XX Y ZZZZZZ T U? VVVVVVV WWWWWWWWWW</code> where <code>XX</code> indicates flash/temperature, <code>Y</code> is flash size, <code>ZZZZZZ</code> is a date/lot code, etc.</li>
-        <li><strong>Visual Cues</strong>:
-            <ul>
-                <li>USB-C connector for power and data.</li>
-                <li>Two push-buttons: <code>BOOT</code> (often IO0) and <code>RST</code> (Reset).</li>
-                <li>Specific pin labels (refer to board documentation if available).</li>
-                <li>A power LED.</li>
-            </ul>
-        </li>
-    </ul>
+        <h2 id="general-usage">3. General Usage</h2>
+        <p>The utility is invoked from your terminal or PowerShell:</p>
+        <pre><code>esp32 [global_options] <command> [<args>...]</code></pre>
+        <p><strong>Global Options:</strong></p>
+        <ul>
+            <li><code>--port <PORT_NAME></code> or <code>-p <PORT_NAME></code>: Temporarily overrides the configured COM port for the current command. For example, <code>esp32 --port COM7 flash</code>.</li>
+        </ul>
 
-    <p><strong>For a detailed guide on board identification, pinouts, and establishing a stable USB connection (especially the BOOT button procedure for flashing), please refer to the guide: <a href="docs/identify_board.md"><code>docs/identify_board.md</code></a>.</strong></p>
+        <h2 id="commands">4. Commands</h2>
 
-    <h2>2. Installation</h2>
+        <h3 id="selecting-your-device-port">4.1 Selecting Your Device Port</h3>
+        <p>Before most operations, you need to tell the tool which serial port your ESP32-C3 is connected to.</p>
+        <ul>
+            <li><strong><code>esp32 devices</code></strong>
+                <p>Lists all available serial (COM) ports detected on your system. The currently selected/configured port will be marked with an asterisk (<code>*</code>).</p>
+                <pre><code>esp32 devices</code></pre>
+            </li>
+            <li><strong><code>esp32 device [PORT_NAME] [--force]</code></strong>
+                <p>Sets or tests the COM port.</p>
+                <ul>
+                    <li><code>esp32 device COM5</code>: Sets <code>COM5</code> as the active port for subsequent commands and saves it to <code>.esp32_deploy_config.json</code>. It will test the port first.</li>
+                    <li><code>esp32 device</code>: If a port is already configured, it tests the connection to the configured port. If no port is configured, it lists available ports.</li>
+                    <li><code>esp32 device COM5 --force</code>: Sets <code>COM5</code> even if the initial connection test fails.</li>
+                </ul>
+                <p><strong>Tip for already flashed devices</strong>: If your device is already flashed with MicroPython and running, it should respond to the test. If <code>mpremote</code> can't connect, ensure the device isn't in a tight loop or stuck. For a new or problematic device, you might need to set the port with <code>--force</code> before flashing.</p>
+            </li>
+        </ul>
 
-    <p>You can install the <code>esp32_micropython</code> utility and its dependencies (<code>esptool</code>, <code>mpremote</code>, <code>pyserial</code>) using pip:</p>
+        <h3 id="flashing-micropython-firmware">4.2 Flashing MicroPython Firmware</h3>
+        <p>This command erases the ESP32-C3's flash and installs MicroPython firmware.</p>
+        <ul>
+            <li><strong><code>esp32 flash [firmware_source] [--baud BAUD_RATE]</code></strong>
+                <ul>
+                    <li><code>firmware_source</code> (optional):
+                        <ul>
+                            <li>If omitted, the tool attempts to download the latest known official <strong>USB-enabled</strong> MicroPython firmware for ESP32-C3 from <code>micropython.org</code>.</li>
+                            <li>You can provide a direct URL to a <code>.bin</code> file.</li>
+                            <li>You can provide a path to a local <code>.bin</code> firmware file.</li>
+                        </ul>
+                    </li>
+                    <li><code>--baud BAUD_RATE</code> (optional): Sets the baud rate for flashing (default: <code>460800</code>).</li>
+                </ul>
+                <p><strong>Shorthand Usage:</strong></p>
+                <pre><code># Ensure device port is set first (e.g., esp32 device COM5)
+esp32 flash</code></pre>
+                <p>This will use the default firmware URL.</p>
+                <p><strong>Important:</strong></p>
+                <ul>
+                    <li>The device <strong>MUST</strong> be in <strong>bootloader mode</strong> for flashing. Typically:
+                        <ol>
+                            <li>Unplug the ESP32.</li>
+                            <li>Press and <strong>hold</strong> the <code>BOOT</code> (or IO0) button.</li>
+                            <li>While still holding <code>BOOT</code>, plug in the USB-C cable.</li>
+                            <li>Wait 2-3 seconds, then release the <code>BOOT</code> button.</li>
+                        </ol>
+                    </li>
+                    <li>The tool will prompt for confirmation before erasing and writing.</li>
+                    <li>If you have many COM ports, and you're unsure which one is the ESP32, check Windows Device Manager (under "Ports (COM & LPT)") before and after plugging in the device (in bootloader mode) to see which port appears.</li>
+                </ul>
+            </li>
+        </ul>
 
-    <pre><code>pip install esp32_micropython</code></pre>
-    <p>*(Note: This assumes the package name <code>esp32_micropython</code> will be used if published to PyPI. If installing from local source, you'd typically use <code>pip install .</code> or <code>python setup.py install</code> from the project root.)*</p>
-
-    <p>Ensure that Python and pip are correctly installed and configured in your system's PATH.</p>
-
-    <h2>3. General Usage</h2>
-
-    <p>The utility is invoked from your terminal or PowerShell:</p>
-
-    <pre><code>esp32 [global_options] &lt;command&gt; [&lt;args&gt;...]</code></pre>
-
-    <p><strong>Global Options:</strong></p>
-
-    <ul>
-        <li><code>--port &lt;PORT_NAME&gt;</code> or <code>-p &lt;PORT_NAME&gt;</code>: Temporarily overrides the configured COM port for the current command. For example, <code>esp32 --port COM7 flash</code>.</li>
-    </ul>
-
-    <h2>4. Commands</h2>
-
-    <h3>4.1 Selecting Your Device Port</h3>
-
-    <p>Before most operations, you need to tell the tool which serial port your ESP32-C3 is connected to.</p>
-
-    <ul>
-        <li><strong><code>esp32 devices</code></strong>
-            <p>Lists all available serial (COM) ports detected on your system. The currently selected/configured port will be marked with an asterisk (<code>*</code>).</p>
-            <pre><code>esp32 devices</code></pre>
-        </li>
-    </ul>
-
-    <ul>
-        <li><strong><code>esp32 device [PORT_NAME] [--force]</code></strong>
-            <p>Sets or tests the COM port.</p>
-            <ul>
-                <li><code>esp32 device COM5</code>: Sets <code>COM5</code> as the active port for subsequent commands and saves it to <code>.esp32_deploy_config.json</code>. It will test the port first.</li>
-                <li><code>esp32 device</code>: If a port is already configured, it tests the connection to the configured port. If no port is configured, it lists available ports.</li>
-                <li><code>esp32 device COM5 --force</code>: Sets <code>COM5</code> even if the initial connection test fails.</li>
-            </ul>
-
-            <p><strong>Tip for already flashed devices</strong>: If your device is already flashed with MicroPython and running, it should respond to the test. If <code>mpremote</code> can't connect, ensure the device isn't in a tight loop or stuck. For a new or problematic device, you might need to set the port with <code>--force</code> before flashing.</p>
-        </li>
-    </ul>
-
-    <h3>4.2 Flashing MicroPython Firmware</h3>
-
-    <p>This command erases the ESP32-C3's flash and installs MicroPython firmware.</p>
-
-    <ul>
-        <li><strong><code>esp32 flash [firmware_source] [--baud BAUD_RATE]</code></strong>
-            <ul>
-                <li><code>firmware_source</code> (optional):
-                    <ul>
-                        <li>If omitted, the tool attempts to download the latest known official <strong>USB-enabled</strong> MicroPython firmware for ESP32-C3 from <code>micropython.org</code>.</li>
-                        <li>You can provide a direct URL to a <code>.bin</code> file.</li>
-                        <li>You can provide a path to a local <code>.bin</code> firmware file.</li>
-                    </ul>
-                </li>
-                <li><code>--baud BAUD_RATE</code> (optional): Sets the baud rate for flashing (default: <code>460800</code>).</li>
-            </ul>
-
-            <p><strong>Shorthand Usage:</strong></p>
-            <pre><code># Ensure device port is set first (e.g., esp32 device COM5)
-esp32 flash
-</code></pre>
-            <p>This will use the default firmware URL.</p>
-
-            <p><strong>Important:</strong></p>
-            <ul>
-                <li>The device <strong>MUST</strong> be in <strong>bootloader mode</strong> for flashing. Typically:
-                    <ol>
-                        <li>Unplug the ESP32.</li>
-                        <li>Press and <strong>hold</strong> the <code>BOOT</code> (or IO0) button.</li>
-                        <li>While still holding <code>BOOT</code>, plug in the USB-C cable.</li>
-                        <li>Wait 2-3 seconds, then release the <code>BOOT</code> button.</li>
-                    </ol>
-                </li>
-                <li>The tool will prompt for confirmation before erasing and writing.</li>
-                <li>If you have many COM ports, and you're unsure which one is the ESP32, check Windows Device Manager (under "Ports (COM & LPT)") before and after plugging in the device (in bootloader mode) to see which port appears.</li>
-            </ul>
-        </li>
-    </ul>
-
-    <h3>4.3 Uploading Files and Directories</h3>
-
-    <ul>
-        <li><strong><code>esp32 upload &lt;local_source&gt; [remote_destination]</code></strong>
-            <p>Uploads files or directories from your computer to the ESP32's filesystem.</p>
-
-            <p><strong>Understanding <code>local_source</code> and trailing slashes for directories:</strong></p>
-            <ul>
-                <li>If <code>local_source</code> is a <strong>file</strong>: It's always uploaded as that single file.</li>
-                <li>If <code>local_source</code> is a <strong>directory</strong> and ends with a <code>/</code> (or <code>\</code> on Windows, e.g., <code>my_dir/</code>): The <em>contents</em> of <code>my_dir</code> are uploaded.</li>
-                <li>If <code>local_source</code> is a <strong>directory</strong> and does <em>not</em> end with a <code>/</code> (e.g., <code>my_dir</code>): The directory <code>my_dir</code> <em>itself</em> (including its contents) is uploaded.</li>
-            </ul>
-
-            <p><strong>Understanding <code>remote_destination</code>:</strong></p>
-            <ul>
-                <li>If omitted, the destination is the root (<code>/</code>) of the ESP32's filesystem.</li>
-                <li>If provided, it specifies the target directory on the ESP32. The tool will create this directory if it doesn't exist.</li>
-            </ul>
-
-            <p><strong>Scenarios &amp; Examples:</strong></p>
-            <ol>
-                <li><strong>Upload a single file to root:</strong>
-                    <pre><code>esp32 upload main.py
+        <h3 id="uploading-files-and-directories">4.3 Uploading Files and Directories</h3>
+        <ul>
+            <li><strong><code>esp32 upload <local_source> [remote_destination]</code></strong>
+                <p>Uploads files or directories from your computer to the ESP32's filesystem.</p>
+                <p><strong>Understanding <code>local_source</code> and trailing slashes for directories:</strong></p>
+                <ul>
+                    <li>If <code>local_source</code> is a <strong>file</strong>: It's always uploaded as that single file.</li>
+                    <li>If <code>local_source</code> is a <strong>directory</strong> and ends with a <code>/</code> (or <code>\</code> on Windows, e.g., <code>my_dir/</code>): The <em>contents</em> of <code>my_dir</code> are uploaded.</li>
+                    <li>If <code>local_source</code> is a <strong>directory</strong> and does <em>not</em> end with a <code>/</code> (e.g., <code>my_dir</code>): The directory <code>my_dir</code> <em>itself</em> (including its contents) is uploaded.</li>
+                </ul>
+                <p><strong>Understanding <code>remote_destination</code>:</strong></p>
+                <ul>
+                    <li>If omitted, the destination is the root (<code>/</code>) of the ESP32's filesystem.</li>
+                    <li>If provided, it specifies the target directory on the ESP32. The tool will create this directory if it doesn't exist.</li>
+                </ul>
+                <p><strong>Scenarios & Examples:</strong></p>
+                <ol>
+                    <li><strong>Upload a single file to root:</strong>
+                        <pre><code>esp32 upload main.py
 # Result on ESP32: /main.py</code></pre>
-                </li>
-                <li><strong>Upload a single file to a specific remote directory:</strong>
-                    <pre><code>esp32 upload utils.py lib
+                    </li>
+                    <li><strong>Upload a single file to a specific remote directory:</strong>
+                        <pre><code>esp32 upload utils.py lib
 # Result on ESP32: /lib/utils.py (lib/ will be created if needed)</code></pre>
-                </li>
-                <li><strong>Upload contents of a local directory to root:</strong>
-                    <pre><code># Assuming local_project/ contains file1.py and subdir/file2.py
+                    </li>
+                    <li><strong>Upload contents of a local directory to root:</strong>
+                        <pre><code># Assuming local_project/ contains file1.py and subdir/file2.py
 esp32 upload local_project/
 # Result on ESP32: /file1.py, /subdir/file2.py</code></pre>
-                </li>
-                <li><strong>Upload contents of a local directory to a specific remote directory:</strong>
-                    <pre><code>esp32 upload local_project/ remote_app
+                    </li>
+                    <li><strong>Upload contents of a local directory to a specific remote directory:</strong>
+                        <pre><code>esp32 upload local_project/ remote_app
 # Result on ESP32: /remote_app/file1.py, /remote_app/subdir/file2.py</code></pre>
-                </li>
-                <li><strong>Upload a local directory itself to root:</strong>
-                    <pre><code>esp32 upload my_library
+                    </li>
+                    <li><strong>Upload a local directory itself to root:</strong>
+                        <pre><code>esp32 upload my_library
 # Result on ESP32: /my_library/... (contains contents of local my_library)</code></pre>
-                </li>
-                <li><strong>Upload a local directory itself into a specific remote directory:</strong>
-                    <pre><code>esp32 upload my_library existing_remote_lib_folder
+                    </li>
+                    <li><strong>Upload a local directory itself into a specific remote directory:</strong>
+                        <pre><code>esp32 upload my_library existing_remote_lib_folder
 # Result on ESP32: /existing_remote_lib_folder/my_library/...</code></pre>
-                </li>
-            </ol>
-        </li>
-    </ul>
-
-    <ul>
-        <li><strong><code>esp32 upload_all_cwd</code></strong>
-            <p>A basic command that attempts to upload all eligible files and directories from your current working directory (CWD) on your computer to the root of the ESP32. It excludes common non-project files like <code>.git</code>, <code>__pycache__</code>, etc.</p>
-            <pre><code># From your project's directory
+                    </li>
+                </ol>
+            </li>
+            <li><strong><code>esp32 upload_all_cwd</code></strong>
+                <p>A basic command that attempts to upload all eligible files and directories from your current working directory (CWD) on your computer to the root of the ESP32. It excludes common non-project files like <code>.git</code>, <code>__pycache__</code>, etc.</p>
+                <pre><code># From your project's directory
 esp32 upload_all_cwd</code></pre>
-        </li>
-    </ul>
+            </li>
+        </ul>
 
-    <h3>4.4 Downloading Files and Directories</h3>
+        <h3 id="downloading-files-and-directories">4.4 Downloading Files and Directories</h3>
+        <ul>
+            <li><strong><code>esp32 download <remote_source_path> [local_target_path]</code></strong>
+                <p>Downloads files or directories from the ESP32 to your computer. This command behaves similarly to <code>upload</code> but in reverse.</p>
+                <p><strong>Understanding <code>remote_source_path</code> and trailing slashes for directories:</strong></p>
+                <ul>
+                    <li>If <code>remote_source_path</code> points to a <strong>file</strong> on the ESP32 (e.g., <code>/data/log.txt</code>): The file is downloaded.</li>
+                    <li>If <code>remote_source_path</code> points to a <strong>directory</strong> on the ESP32 and <em>ends with a <code>/</code></em> (e.g., <code>/logs/</code>): The <em>contents</em> of that remote directory are downloaded into the specified <code>local_target_path</code>.
+                        <ul>
+                            <li>To download the contents of the root directory, use <code>//</code> (e.g., <code>esp32 download // local_root_backup</code>).</li>
+                        </ul>
+                    </li>
+                    <li>If <code>remote_source_path</code> points to a <strong>directory</strong> on the ESP32 and <em>does not end with a <code>/</code></em> (e.g., <code>/config</code>): The directory <code>config</code> <em>itself</em> (including its contents) is downloaded and created within the <code>local_target_path</code>.</li>
+                </ul>
+                <p><strong>Understanding <code>local_target_path</code>:</strong></p>
+                <ul>
+                    <li>If omitted, the download target is the current working directory (<code>.</code>) on your computer.</li>
+                    <li>If provided, it specifies the local directory where items will be placed or the local filename if downloading a single file to a specific name. The tool will create this directory if it doesn't exist.</li>
+                </ul>
+                <p><strong>Scenarios & Examples:</strong></p>
+                <ol>
+                    <li><strong>Download a remote file to the current local directory:</strong>
+                        <pre><code>esp32 download /boot.py
+# Result: ./boot.py locally</code></pre>
+                    </li>
+                    <li><strong>Download a remote file to a specific local directory, keeping its name:</strong>
+                        <pre><code>esp32 download /lib/utils.py my_local_lib
+# Result: ./my_local_lib/utils.py locally (my_local_lib/ created if needed)</code></pre>
+                    </li>
+                    <li><strong>Download a remote file to a specific local path and name:</strong> (mpremote behavior for <code>cp :remote_file local_file_path</code>)
+                        <pre><code>esp32 download /data/sensor.dat backup/latest_sensor.dat
+# Result: ./backup/latest_sensor.dat locally</code></pre>
+                    </li>
+                    <li><strong>Download a remote directory (e.g., <code>logs</code>) and its contents into the current local directory:</strong>
+                        <pre><code>esp32 download /logs
+# Result: ./logs/... locally (creates a 'logs' folder in CWD)</code></pre>
+                    </li>
+                    <li><strong>Download a remote directory (e.g., <code>data</code>) and its contents into a specified local directory (<code>backup_data</code>):</strong>
+                        <pre><code>esp32 download /data backup_data
+# Result: ./backup_data/data/... locally</code></pre>
+                    </li>
+                    <li><strong>Download the <em>contents</em> of a remote directory (e.g., <code>/app/</code>) into the current local directory:</strong>
+                        <pre><code>esp32 download /app/ .
+# Result: Files and subdirectories from /app/ on device are copied into ./ locally
+# Example: if /app/main.py and /app/gfx/img.png exist,
+# they become ./main.py and ./gfx/img.png</code></pre>
+                    </li>
+                    <li><strong>Download the <em>contents</em> of a remote directory (e.g., <code>/lib/</code>) into a specified local directory (<code>local_libs_backup</code>):</strong>
+                        <pre><code>esp32 download /lib/ local_libs_backup
+# Result: Contents of /lib/ on device are copied into ./local_libs_backup/ locally
+# Example: if /lib/tool.py exists, it becomes ./local_libs_backup/tool.py</code></pre>
+                    </li>
+                    <li><strong>Download the <em>contents</em> of the device's root directory into a local directory <code>full_backup</code>:</strong>
+                        <pre><code>esp32 download // full_backup
+# Result: All files and folders from device root copied into ./full_backup/</code></pre>
+                    </li>
+                </ol>
+            </li>
+        </ul>
 
-    <ul>
-        <li><strong><code>esp32 download &lt;remote_file_path&gt; [local_target_path]</code></strong>
-            <p>Downloads a single file from the ESP32 to your computer.</p>
-            <ul>
-                <li><code>remote_file_path</code>: The full path to the file on the ESP32 (e.g., <code>main.py</code>, <code>lib/utils.py</code>).</li>
-                <li><code>local_target_path</code> (optional): The name/path to save the file as locally. Defaults to the remote file's basename in the current directory.</li>
-            </ul>
-
-            <p><strong>Scenarios &amp; Examples:</strong></p>
-            <pre><code>esp32 download main.py
-# Saves /main.py from device to ./main.py locally
-
-esp32 download lib/config.json backup_config.json
-# Saves /lib/config.json from device to ./backup_config.json locally</code></pre>
-    </li>
-    </ul>
-
-    <ul>
-        <li><strong><code>esp32 download_all &lt;remote_source_dir&gt; [local_target_dir]</code></strong>
-            <p>Recursively downloads the contents of a directory from the ESP32 to your computer.</p>
-            <ul>
-                <li><code>remote_source_dir</code>: The directory on the ESP32 to download (e.g., <code>lib</code>, <code>data</code>).</li>
-                <li><code>local_target_dir</code> (optional): The local directory to save into. Defaults to a new directory with the same name as <code>remote_source_dir</code> in the CWD.</li>
-            </ul>
-
-            <p><strong>Scenarios &amp; Examples:</strong></p>
-            <pre><code>esp32 download_all lib
-# Creates ./lib/ locally and copies contents of /lib from device into it.
-
-esp32 download_all data my_backup/device_data
-# Creates ./my_backup/device_data/ locally and copies /data/* into it.</code></pre>
-        </li>
-    </ul>
-
-    <h3>4.5 Managing Remote Filesystem</h3>
-
-    <ul>
-        <li><strong><code>esp32 list [remote_directory]</code></strong> or <strong><code>esp32 ls [remote_directory]</code></strong>
-            <p>Lists files and directories on the ESP32.</p>
-            <ul>
-                <li><code>remote_directory</code> (optional): The directory to list. Defaults to the root (<code>/</code>).</li>
-            </ul>
-
-            <p><strong>Shorthand Usage:</strong></p>
-            <pre><code>esp32 list
+        <h3 id="managing-remote-filesystem">4.5 Managing Remote Filesystem</h3>
+        <ul>
+            <li><strong><code>esp32 list [remote_directory]</code></strong> or <strong><code>esp32 ls [remote_directory]</code></strong>
+                <p>Lists files and directories on the ESP32. The listing is recursive from the given path.</p>
+                <ul>
+                    <li><code>remote_directory</code> (optional): The directory to list (e.g., <code>/lib</code>). Defaults to the root (<code>/</code>), listing top-level items.</li>
+                </ul>
+                <p><strong>Shorthand Usage:</strong></p>
+                <pre><code>esp32 list
 esp32 list lib</code></pre>
-        </li>
-    </ul>
-
-    <ul>
-        <li><strong><code>esp32 tree [remote_directory]</code></strong>
-            <p>Displays a tree-like view of files and subdirectories within the specified remote directory.</p>
-            <ul>
-                <li><code>remote_directory</code> (optional): Defaults to root (<code>/</code>).</li>
-            </ul>
-
-            <p><strong>Shorthand Usage:</strong></p>
-            <pre><code>esp32 tree
+            </li>
+            <li><strong><code>esp32 tree [remote_directory]</code></strong>
+                <p>Displays a tree-like view of files and subdirectories within the specified remote directory.</p>
+                <ul>
+                    <li><code>remote_directory</code> (optional): Defaults to root (<code>/</code>).</li>
+                </ul>
+                <p><strong>Shorthand Usage:</strong></p>
+                <pre><code>esp32 tree
 esp32 tree lib</code></pre>
-        </li>
-    </ul>
-
-    <ul>
-        <li><strong><code>esp32 delete [remote_path_to_delete]</code></strong>
-            <p>Deletes a file or directory (recursively) on the ESP32.</p>
-            <ul>
-                <li><code>remote_path_to_delete</code> (optional): The file or directory to delete (e.g., <code>old_main.py</code>, <code>temp_files/</code>).</li>
-                <li>If omitted, the command will prompt for confirmation to <strong>delete all contents of the root directory</strong>. <strong>Use with extreme caution!</strong></li>
-            </ul>
-
-            <p><strong>Shorthand Usage:</strong></p>
-            <pre><code>esp32 delete old_script.py
+            </li>
+            <li><strong><code>esp32 delete [remote_path_to_delete]</code></strong>
+                <p>Deletes a file or directory (recursively) on the ESP32.</p>
+                <ul>
+                    <li><code>remote_path_to_delete</code> (optional): The file or directory to delete (e.g., <code>old_main.py</code>, <code>temp_files/</code>).</li>
+                    <li>If omitted or set to <code>/</code>, the command will prompt for confirmation to <strong>delete all contents of the root directory</strong>. <strong>Use with extreme caution!</strong></li>
+                </ul>
+                <p><strong>Shorthand Usage:</strong></p>
+                <pre><code>esp32 delete old_script.py
 esp32 delete my_module/
-esp32 delete # Prompts to wipe root</code></pre>
-        </li>
-    </ul>
+esp32 delete # Prompts to wipe root
+esp32 delete / # Also prompts to wipe root</code></pre>
+            </li>
+        </ul>
 
-    <h3>4.6 Running Scripts</h3>
-
-    <ul>
-        <li><strong><code>esp32 run [script_name]</code></strong>
-            <p>Executes a MicroPython script that exists on the ESP32's filesystem.</p>
-            <ul>
-                <li><code>script_name</code> (optional): The path to the script on the device (e.g., <code>app.py</code>, <code>tests/run_tests.py</code>). Defaults to <code>main.py</code>.</li>
-            </ul>
-            <p>The script's output (and any errors) will be displayed in your terminal.</p>
-
-            <p><strong>Shorthand Usage:</strong></p>
-            <pre><code>esp32 run
+        <h3 id="running-scripts">4.6 Running Scripts</h3>
+        <ul>
+            <li><strong><code>esp32 run [script_name]</code></strong>
+                <p>Executes a MicroPython script that exists on the ESP32's filesystem.</p>
+                <ul>
+                    <li><code>script_name</code> (optional): The path to the script on the device (e.g., <code>app.py</code>, <code>tests/run_tests.py</code>). Defaults to <code>main.py</code>. Path is relative to the device root.</li>
+                </ul>
+                <p>The script's output (and any errors) will be displayed in your terminal.</p>
+                <p><strong>Shorthand Usage:</strong></p>
+                <pre><code>esp32 run
 # Executes /main.py on device
 
 esp32 run services/scanner.py
 # Executes /services/scanner.py on device</code></pre>
-        </li>
-    </ul>
+            </li>
+        </ul>
 
-    <h2>5. Troubleshooting</h2>
+        <h2 id="troubleshooting">5. Troubleshooting</h2>
+        <ul>
+            <li><strong>Connection Issues / Device Not Detected:</strong>
+                <ul>
+                    <li>Ensure the USB-C cable supports data transfer (not just charging).</li>
+                    <li>Verify the correct COM port is selected (<code>esp32 devices</code>, <code>esp32 device <PORT></code>).</li>
+                    <li>For flashing or if the device is unresponsive, make sure it's in <strong>bootloader mode</strong>. See Section 4.2 or <a href="docs_md/identify_board.md"><code>docs_md/identify_board.md</code></a>.</li>
+                    <li>Check if other serial terminal programs (Arduino IDE Serial Monitor, PuTTY, etc.) are holding the port open. Close them.</li>
+                </ul>
+            </li>
+            <li><strong><code>esptool</code> or <code>mpremote</code> command not found:</strong>
+                <ul>
+                    <li>Make sure <code>esptool</code> and <code>mpremote</code> are installed: <code>pip install esptool mpremote pyserial</code>.</li>
+                    <li>Ensure your Python scripts directory is in your system's PATH environment variable.</li>
+                </ul>
+            </li>
+            <li><strong>Firmware Flashed, but Device Unresponsive or <code>test_device</code> Fails:</strong>
+                <ul>
+                    <li>The default firmware URL points to a generic ESP32-C3 USB-enabled build. While it works for many "SuperMini" clones, some ESP32-C3 boards might require a specific version or a build with different options.</li>
+                    <li><strong>Try finding an alternative official MicroPython <code>.bin</code> file for ESP32-C3</strong> from <a href="https://micropython.org/download/esp32c3/">micropython.org/download/esp32c3/</a> that matches your board's specifications (e.g., flash size, specific features if known).</li>
+                    <li>Then, use the <code>flash</code> command with the path to your downloaded file:
+                        <pre><code>esp32 flash path/to/your_downloaded_firmware.bin</code></pre>
+                    </li>
+                    <li>After flashing, physically reset the device (unplug/replug or RST button) before testing.</li>
+                </ul>
+            </li>
+            <li><strong>Upload/Download/List commands fail with "No response or mpremote error":</strong>
+                <ul>
+                    <li>Ensure MicroPython is running correctly on the device. Try <code>esp32 device</code> to test basic connectivity.</li>
+                    <li>If the device was just flashed, it might need a manual reset.</li>
+                    <li>The MicroPython script on the device might be stuck in an infinite loop or has crashed. Try resetting the board and connecting again quickly.</li>
+                </ul>
+            </li>
+        </ul>
+        <hr>
+        <p>This utility aims to streamline your ESP32-C3 MicroPython development workflow. Happy coding!</p>
+    </main>
 
-    <ul>
-        <li><strong>Connection Issues / Device Not Detected:</strong>
-            <ul>
-                <li>Ensure the USB-C cable supports data transfer (not just charging).</li>
-                <li>Verify the correct COM port is selected (<code>esp32 devices</code>, <code>esp32 device &lt;PORT&gt;</code>).</li>
-                <li>For flashing or if the device is unresponsive, make sure it's in <strong>bootloader mode</strong>. See Section 4.2 or <a href="docs/identify_board.md"><code>docs/identify_board.md</code></a>.</li>
-                <li>Check if other serial terminal programs (Arduino IDE Serial Monitor, PuTTY, etc.) are holding the port open. Close them.</li>
-            </ul>
-        </li>
-    </ul>
+    <script>
+        // Optional: Smooth scrolling and active link highlighting
+        document.querySelectorAll('#sidebar a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                document.querySelector(this.getAttribute('href')).scrollIntoView({
+                    behavior: 'smooth'
+                });
 
-    <ul>
-        <li><strong><code>esptool</code> or <code>mpremote</code> command not found:</strong>
-            <ul>
-                <li>Make sure <code>esptool</code> and <code>mpremote</code> are installed: <code>pip install esptool mpremote pyserial</code>.</li>
-                <li>Ensure your Python scripts directory is in your system's PATH environment variable.</li>
-            </ul>
-        </li>
-    </ul>
-
-    <ul>
-        <li><strong>Firmware Flashed, but Device Unresponsive or <code>test_device</code> Fails:</strong>
-            <ul>
-                <li>The default firmware URL points to a generic ESP32-C3 USB-enabled build. While it works for many "SuperMini" clones, some ESP32-C3 boards might require a specific version or a build with different options.</li>
-                <li><strong>Try finding an alternative official MicroPython <code>.bin</code> file for ESP32-C3</strong> from <a href="https://micropython.org/download/esp32c3/">micropython.org/download/esp32c3/</a> that matches your board's specifications (e.g., flash size, specific features if known).</li>
-                <li>Then, use the <code>flash</code> command with the path to your downloaded file:
-                    <pre><code>esp32 flash path/to/your_downloaded_firmware.bin</code></pre>
-                </li>
-                <li>After flashing, physically reset the device before testing.</li>
-            </ul>
-        </li>
-    </ul>
-
-    <ul>
-        <li><strong>Upload/Download/List commands fail with "No response or mpremote error":</strong>
-            <ul>
-                <li>Ensure MicroPython is running correctly on the device. Try <code>esp32 device</code> to test basic connectivity.</li>
-                <li>If the device was just flashed, it might need a manual reset.</li>
-                <li>The MicroPython script on the device might be stuck in an infinite loop or has crashed. Try resetting the board and connecting again quickly.</li>
-            </ul>
-        </li>
-    </ul>
-
-    <hr>
-
-    <p>This utility aims to streamline your ESP32-C3 MicroPython development workflow. Happy coding!</p>
+                // Active link highlighting
+                document.querySelectorAll('#sidebar a').forEach(link => link.classList.remove('active'));
+                this.classList.add('active');
+                // If it's a sub-item, also highlight its parent
+                if (this.closest('ul ul')) {
+                    this.closest('ul ul').previousElementSibling.classList.add('active');
+                }
+            });
+        });
+    </script>
 </body>
 </html>
