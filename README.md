@@ -34,7 +34,7 @@ You can install the `esp32_micropython` utility and its dependencies (`esptool`,
 ```bash
 pip install esp32_micropython
 ```
-*(Note: This assumes the package name `esp32_micropython` will be used if published to PyPI. If installing from local source, you'd typically use `pip install .` or `python setup.py install` from the project root.)*
+*(If installing from local source, you'd typically use `pip install .` or `python setup.py install` from the project root.)*
 
 Ensure that Python and pip are correctly installed and configured in your system's PATH.
 
