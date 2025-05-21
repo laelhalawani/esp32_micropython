@@ -41,7 +41,7 @@ dependencies = [
 esp32 = "dm:main"
 
 [project.urls]
-Homepage = "https://github.com/aistack-pl/esp32-micropython"  
+Homepage = "https://laelhalawani.github.io/esp32_micropython/"
 Repository = "https://github.com/aistack-pl/esp32-micropython"  
-Bug-Tracker = "https://github.com/aistack-pl/esp32-micropython/issues"  
+Bug-Tracker = "https://github.com/aistack-pl/esp32-micropython/issues"
 

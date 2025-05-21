@@ -23,6 +23,7 @@ setup(
     author="aistack.pl",
     author_email="lael@aistack.pl",
     description="All-in-one utility for flashing and managing MicroPython deployments on ESP32-C3 SuperMini boards.",
+    website="https://laelhalawani.github.io/esp32_micropython/",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/aistack-pl/esp32-micropython",
@@ -42,8 +43,9 @@ setup(
     ],
     keywords="esp32 esp32-c3 micropython flash deploy mpremote esptool firmware",
     project_urls={ 
-        "Bug Reports": "https://github.com/aistack-pl/esp32-micropython-tool/issues",
-        "Source": "https://github.com/aistack-pl/esp32-micropython-tool/",
+        "Bug Reports": "https://github.com/aistack-pl/esp32-micropython/issues",
+        "Source": "https://github.com/aistack-pl/esp32-micropython/",
+        "Homepage": "https://laelhalawani.github.io/esp32_micropython/",
     },
     include_package_data=True,
 )
