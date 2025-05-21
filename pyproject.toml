@@ -37,7 +37,7 @@ dependencies = [
 ]
 
 [project.scripts]
-esp32 = "dm:main"
+esp32 = "esp32_micropython.dm:main"
 
 [project.urls]
 Homepage = "https://laelhalawani.github.io/esp32_micropython/"
