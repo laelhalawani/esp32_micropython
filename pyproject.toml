@@ -1,3 +1,47 @@
 [build-system]
 requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "esp32_micropython"
+version = "0.2.0" 
+description = "All-in-one utility for flashing and managing MicroPython deployments on ESP32-C3 SuperMini boards."
+readme = "README.md"
+requires-python = ">=3.11,<3.12"  
+license = {text = "MIT"} 
+authors = [
+    {name = "aistack.pl", email = "lael@aistack.pl"}
+]
+maintainers = [
+    {name = "aistack.pl", email = "lael@aistack.pl"}
+]
+keywords = ["esp32", "esp32-c3", "micropython", "flash", "deploy", "mpremote", "esptool", "firmware"]
+
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Embedded Systems",
+    "Topic :: System :: Hardware :: Hardware Drivers",
+    "Topic :: Terminals :: Serial",
+    "Topic :: Utilities",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Operating System :: OS Independent",
+    "Environment :: Console",
+]
+
+dependencies = [
+    "esptool>=4.8,<5.0",
+    "mpremote>=1.25,<2.0",
+    "pyserial>=3.5,<4.0",
+]
+
+[project.scripts]
+esp32 = "dm:main"
+
+[project.urls]
+Homepage = "https://github.com/aistack-pl/esp32-micropython"  
+Repository = "https://github.com/aistack-pl/esp32-micropython"  
+Bug-Tracker = "https://github.com/aistack-pl/esp32-micropython/issues"  
+

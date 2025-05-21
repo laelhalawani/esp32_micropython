@@ -1,6 +1,6 @@
-**Guide: How to Identify and Connect Your ESP32-C3 SuperMini Board**
+# Guide: How to Identify and Connect Your ESP32-C3 SuperMini Board 
 
----
+How to identify you have a compatible board (or to choose a different firmware)
 
 ## 1. Board Identification by Chip Marking
 

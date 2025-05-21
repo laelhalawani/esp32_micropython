@@ -1,5 +1,10 @@
-**Guide: Flashing MicroPython on Your ESP32-C3 SuperMini**
+## Guide: Flashing MicroPython on Your ESP32-C3 SuperMini Manually 
 
+
+### This is a leftover doc
+*Currently esp32 handles flashing automatically with `esp32 flash` command*
+
+### Guide 
 Once your ESP32-C3 SuperMini is stably connected (COM port solid, BOOT-override applied), follow these steps to erase any existing firmware and flash the official MicroPython build.
 
 ---
