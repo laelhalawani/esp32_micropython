@@ -30,9 +30,10 @@ classifiers = [
     "Environment :: Console",
 ]
 dependencies = [
-    "esptool>=4.8,<5.0",
-    "mpremote>=1.25,<2.0",
-    "pyserial>=3.5,<4.0",
+    "esptool==4.8.1",
+    "mpremote==1.25.0",
+    "micropython-esp32-stubs==1.25.0.post2",
+    "micropython-esp32-esp32_generic_c3-stubs==1.23.0.post2",
 ]
 
 [project.scripts]
@@ -42,4 +43,3 @@ esp32 = "dm:main"
 Homepage = "https://laelhalawani.github.io/esp32_micropython/"
 Repository = "https://github.com/aistack-pl/esp32-micropython"
 Bug_Tracker = "https://github.com/aistack-pl/esp32-micropython/issues"
-Documentation = "https://github.com/aistack-pl/esp32-micropython#readme"
