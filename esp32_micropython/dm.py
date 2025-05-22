@@ -22,6 +22,7 @@ import tempfile
 import shutil
 import re # Added for parsing stat output
 import time # Added for delays
+import textwrap
 
 CONFIG_FILE = Path(__file__).parent / ".esp32_deploy_config.json"
 DEVICE_PORT = None # Will be set by main after parsing args or loading config
@@ -848,7 +849,106 @@ def cmd_diagnostics():
         print("\nDiagnostics completed. Review output above.")
     else:
         print("\nDiagnostics completed with some errors.")
-        
+
+def cmd_read(remote_file_path_arg, max_lines_str=None):
+    global DEVICE_PORT
+    
+    remote_file_on_device_norm = remote_file_path_arg.strip('/')
+    if not remote_file_on_device_norm:
+        print("Error: A valid remote file path must be provided for reading.", file=sys.stderr)
+        sys.exit(1)
+
+    abs_remote_path_for_uos = f"/{remote_file_on_device_norm}"
+    # For the Python code string itself, we need to be careful with escaping.
+    # The path needs to be a valid Python string literal *inside* the code we send.
+    # So, if path contains ' it needs to be \', if it contains \ it needs to be \\.
+    
+    # Create a Python string literal for the path, handling backslashes and single quotes.
+    # repr() is excellent for this as it produces a string representation that, when evaluated,
+    # gives back the original string. We just need to strip the outer quotes it adds if any.
+    path_literal_for_python_code = repr(abs_remote_path_for_uos)
+    # If repr() added double quotes (e.g. if path had single quotes), use them.
+    # If it added single quotes, that's fine too.
+
+    print(f"Checking remote file ':{remote_file_on_device_norm}'...")
+    path_type = get_remote_path_stat(remote_file_on_device_norm)
+    time.sleep(FS_OPERATION_DELAY / 2) 
+
+    if path_type is None:
+        print(f"Error: Remote path ':{remote_file_on_device_norm}' not found on device.", file=sys.stderr)
+        sys.exit(1)
+    if path_type == 'dir':
+        print(f"Error: Remote path ':{remote_file_on_device_norm}' is a directory. Cannot read a directory.", file=sys.stderr)
+        sys.exit(1)
+    if path_type != 'file':
+        print(f"Error: Remote path ':{remote_file_on_device_norm}' is not a file (type: {path_type}).", file=sys.stderr)
+        sys.exit(1)
+
+    max_lines = 0 
+    if max_lines_str:
+        try:
+            max_lines = int(max_lines_str)
+            if max_lines < 0:
+                print("Warning: max_lines cannot be negative, defaulting to unlimited.", file=sys.stderr)
+                max_lines = 0
+        except ValueError:
+            print(f"Warning: Invalid value '{max_lines_str}' for max_lines. Defaulting to unlimited.", file=sys.stderr)
+            max_lines = 0
+            
+    print(f"\n--- Content of '{remote_file_on_device_norm}' {'' if max_lines == 0 else '(first '+str(max_lines)+' lines)'}:\n")
+
+    # Construct the Python code block as a raw string (triple-quoted)
+    # to make escaping easier and preserve newlines literally.
+    # Then, we'll format in the path and max_lines.
+    # Using f-string directly here for the whole block.
+    # The key is to ensure the 'path_literal_for_python_code' is correctly inserted as a string literal
+    # and max_lines as an integer.
+
+    # Using string.Template might be safer if paths could have {}
+    # but for now, direct f-string with careful construction.
+    
+    # Ensure path_literal_for_python_code is a valid Python string. repr() does this.
+    # max_lines is an int.
+
+    # This is the Python code that will run on the ESP32
+    on_device_code_template = f"""
+import sys
+try:
+    # Path is {path_literal_for_python_code}
+    # Max lines is {max_lines}
+    with open({path_literal_for_python_code}, 'r') as f:
+        count = 0
+        for line in f:
+            sys.stdout.write(line) # Use sys.stdout.write for more direct output
+            count += 1
+            if {max_lines} > 0 and count >= {max_lines}:
+                break
+except OSError as e:
+    sys.stderr.write(str(e)) # Print error to stderr on device
+"""
+    # Remove leading indentation from the template for cleaner execution
+    # This is important as Python is sensitive to indentation.
+    import textwrap
+    python_code_to_execute = textwrap.dedent(on_device_code_template).strip()
+
+    # For debugging what's sent:
+    # print(f"DEBUG cmd_read - python_code for exec:\n>>>\n{python_code_to_execute}\n<<<", file=sys.stderr)
+    
+    read_timeout = MP_TIMEOUT_CP_FILE * 2 if max_lines == 0 else MP_TIMEOUT_EXEC * 2
+    
+    # Pass the code as a single string argument to "exec"
+    result = run_mpremote_command(["exec", python_code_to_execute], suppress_output=False, timeout=read_timeout)
+    time.sleep(FS_OPERATION_DELAY) 
+
+    print(f"\n\n--- End of ':{remote_file_on_device_norm}' ---")
+
+    if result and result.returncode != 0:
+        # Errors from the script (like OSError) are now printed to stderr by the script itself,
+        # which should be forwarded by mpremote due to suppress_output=False.
+        # mpremote's own stderr (e.g., connection issues) will also be printed.
+        pass
+
+
 def cmd_flash(firmware_source, baud_rate_str="230400"):
     global DEVICE_PORT
     if not DEVICE_PORT:
@@ -951,7 +1051,6 @@ def cmd_flash(firmware_source, baud_rate_str="230400"):
             try: os.remove(downloaded_temp_file)
             except OSError as e: print(f"Warning: Could not delete temporary firmware file {downloaded_temp_file}: {e}", file=sys.stderr)
 
-
 def main():
     global DEVICE_PORT
     cfg = load_config()
@@ -981,11 +1080,16 @@ def main():
     
     dl_parser = subparsers.add_parser("download", help="Download file/directory from ESP32. Iterative with delays.")
     dl_parser.add_argument("remote_source_path", metavar="REMOTE_PATH", help="Remote file/dir path. Trailing '/' on dir (e.g., '/logs/', '//' for root contents) downloads its contents. No trailing slash (e.g. '/logs') downloads the directory itself.")
-    dl_parser.add_argument("local_target_path", nargs='?', default=None, metavar="LOCAL_PATH", help="Local directory to download into, or local filename for a single remote file. If omitted, uses current directory.")
+    dl_parser.add_argument("local_target_path", nargs='?', default=None, metavar="LOCAL_DIR_PATH", help="Local directory to download into. If omitted, uses current directory. Downloaded items retain their original names.")
 
     run_parser = subparsers.add_parser("run", help="Run Python script on ESP32.")
     run_parser.add_argument("script_name", nargs='?', default="main.py", metavar="SCRIPT", help="Script to run (default: main.py). Path relative to device root.")
     
+    # New "read" command
+    read_parser = subparsers.add_parser("read", help="Read and print content of a remote file to the console.")
+    read_parser.add_argument("remote_file_path", metavar="REMOTE_FILE_PATH", help="The exact path to the file on the device (e.g., 'main.py', 'lib/foo.py').")
+    read_parser.add_argument("max_lines", nargs='?', default="0", metavar="MAX_LINES", help="Maximum number of lines to print. 0 for unlimited (default: 0).")
+
     list_parser = subparsers.add_parser("list", help="List files/dirs on ESP32 (recursively from given path).") 
     list_parser.add_argument("remote_directory", nargs='?', default=None, metavar="REMOTE_DIR", help="Remote directory path (e.g., '/lib', or omit for root).")
     
@@ -1004,7 +1108,7 @@ def main():
     
     commands_needing_port = [
         "device", "upload", "run", "list", "tree", 
-        "download", "delete", "flash", "diagnostics" 
+        "download", "delete", "flash", "diagnostics", "read" # Added "read"
     ]
     is_device_command_setting_port = args.cmd == "device" and args.port_name
     
@@ -1028,6 +1132,7 @@ def main():
     elif args.cmd == "flash": cmd_flash(args.firmware_source, args.baud)
     elif args.cmd == "upload": cmd_upload(args.local_source, args.remote_destination)
     elif args.cmd == "run": run_script(args.script_name)
+    elif args.cmd == "read": cmd_read(args.remote_file_path, args.max_lines) # Added handler for "read"
     elif args.cmd == "list": list_remote(args.remote_directory)
     elif args.cmd == "tree": tree_remote(args.remote_directory)
     elif args.cmd == "download": cmd_download(args.remote_source_path, args.local_target_path)
