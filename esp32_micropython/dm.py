@@ -367,7 +367,7 @@ def cmd_upload(local_src_arg, remote_dest_arg=None):
                 remote_file_target_on_device_str = f":{current_remote_target_dir_str}/{file_name}" if current_remote_target_dir_str else f":{file_name}"
 
                 print(f"  Uploading '{local_file_full_path.relative_to(abs_local_path)}' to '{remote_file_target_on_device_str}'...")
-                cp_args_file = ["fs", "cp", "-f", str(local_file_full_path).replace(os.sep, '/'), remote_file_target_on_device_str]
+                cp_args_file = ["fs", "cp", "-F", str(local_file_full_path).replace(os.sep, '/'), remote_file_target_on_device_str]
                 result_file = run_mpremote_command(cp_args_file, suppress_output=True, timeout=MP_TIMEOUT_CP_FILE)
                 time.sleep(FS_OPERATION_DELAY) 
                 
@@ -382,7 +382,7 @@ def cmd_upload(local_src_arg, remote_dest_arg=None):
     else: 
         print(f"Error: Unhandled local source type for '{original_local_src_display}'.", file=sys.stderr)
         sys.exit(1)
-        
+
 def cmd_download(remote_src_arg, local_dest_arg=None): # local_dest_arg is now always a target directory
     global DEVICE_PORT
     had_trailing_slash_remote = remote_src_arg.endswith("/")
