@@ -367,7 +367,7 @@ def cmd_upload(local_src_arg, remote_dest_arg=None):
                 remote_file_target_on_device_str = f":{current_remote_target_dir_str}/{file_name}" if current_remote_target_dir_str else f":{file_name}"
 
                 print(f"  Uploading '{local_file_full_path.relative_to(abs_local_path)}' to '{remote_file_target_on_device_str}'...")
-                cp_args_file = ["fs", "cp", str(local_file_full_path).replace(os.sep, '/'), remote_file_target_on_device_str]
+                cp_args_file = ["fs", "cp", "-f", str(local_file_full_path).replace(os.sep, '/'), remote_file_target_on_device_str]
                 result_file = run_mpremote_command(cp_args_file, suppress_output=True, timeout=MP_TIMEOUT_CP_FILE)
                 time.sleep(FS_OPERATION_DELAY) 
                 
