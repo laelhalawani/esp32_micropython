@@ -808,7 +808,6 @@ def delete_remote(remote_path_arg):
             if del_result and not err_msg and del_result.stdout: err_msg = del_result.stdout.strip()
             print(f"Error deleting '{mpremote_target_path}': {err_msg}", file=sys.stderr)
             sys.exit(1)
-
 def cmd_diagnostics():
     global DEVICE_PORT
     if not DEVICE_PORT:
@@ -817,8 +816,10 @@ def cmd_diagnostics():
     print(f"Running diagnostics on {DEVICE_PORT}...")
     diag_steps = [
         {"desc": "Memory Info (micropython.mem_info(1))", "type": "exec", "code": "import micropython; micropython.mem_info(1)", "timeout": MP_TIMEOUT_EXEC},
-        {"desc": "Filesystem Usage (mpremote fs df)", "type": "mpremote_cmd", "args": ["fs", "df"], "timeout": MP_TIMEOUT_DF},
+        # Corrected: Added ":" as the path argument for 'fs df'
+        {"desc": "Filesystem Usage (mpremote fs df)", "type": "mpremote_cmd", "args": ["fs", "df", ":"], "timeout": MP_TIMEOUT_DF},
         {"desc": "Free GC Memory (gc.mem_free())", "type": "exec", "code": "import gc; gc.collect(); print(gc.mem_free())", "timeout": MP_TIMEOUT_EXEC},
+        # Using ":/" for 'fs ls' is also fine, though just ":" often works for root with mpremote
         {"desc": "List Root (mpremote fs ls :/)", "type": "mpremote_cmd", "args": ["fs", "ls", ":/"], "timeout": MP_TIMEOUT_LS_MPREMOTE}
     ]
     all_ok = True
@@ -830,19 +831,31 @@ def cmd_diagnostics():
         elif step["type"] == "mpremote_cmd":
             result = run_mpremote_command(step["args"], suppress_output=False, timeout=step["timeout"])
         
-        time.sleep(FS_OPERATION_DELAY / 2)
+        time.sleep(FS_OPERATION_DELAY / 2) # Small delay between diagnostic commands
 
         if result is None or result.returncode != 0:
             all_ok = False
             print(f"Error running diagnostic for {step['desc']}.", file=sys.stderr)
-            if result and result.stderr: print(f"Details: {result.stderr.strip()}", file=sys.stderr)
-            elif result and result.stdout and step["type"] == "exec": print(f"Output (may contain error): {result.stdout.strip()}", file=sys.stderr)
-            elif result is None: print("Failed to get a process result.", file=sys.stderr)
+            if result and result.stderr:
+                # For fs df error, stderr might not be very informative if it's just the usage.
+                # Check if stdout also has content, as mpremote sometimes prints usage to stdout.
+                if result.stdout and "usage: fs" in result.stdout:
+                     print(f"Details: {result.stdout.strip()}", file=sys.stderr)
+                else:
+                     print(f"Details: {result.stderr.strip()}", file=sys.stderr)
+
+            elif result and result.stdout and step["type"] == "exec": 
+                print(f"Output (may contain error): {result.stdout.strip()}", file=sys.stderr)
+            elif result is None:
+                 print("Failed to get a process result.", file=sys.stderr)
+        # No need for 'elif result.stdout and step["type"] == "mpremote_cmd": pass'
+        # as suppress_output is False, so stdout is already printed if successful.
     
-    if all_ok: print("\nDiagnostics completed. Review output above.")
-    else: print("\nDiagnostics completed with some errors.")
-
-
+    if all_ok:
+        print("\nDiagnostics completed. Review output above.")
+    else:
+        print("\nDiagnostics completed with some errors.")
+        
 def cmd_flash(firmware_source, baud_rate_str="230400"):
     global DEVICE_PORT
     if not DEVICE_PORT:
