@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "esp32-micropython"
-version = "0.2.6"
+version = "0.2.7"
 description = "All-in-one utility for flashing and managing MicroPython deployments on ESP32-C3 SuperMini boards."
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.11,<3.12"
