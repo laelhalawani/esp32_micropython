@@ -284,14 +284,17 @@ def ensure_remote_dir(remote_dir_to_create):
     return True
 
 def cmd_upload(local_src_arg, remote_dest_arg=None):
-    global DEVICE_PORT 
+    global DEVICE_PORT
 
     had_trailing_slash_local = local_src_arg.endswith(("/", os.sep))
+    # Use a temporary variable for path existence checks, stripping any trailing slash
+    # to ensure Path.is_file() / Path.is_dir() work correctly.
     local_src_for_checks_str = local_src_arg
     if had_trailing_slash_local:
         local_src_for_checks_str = local_src_arg.rstrip("/" + os.sep)
-        if not local_src_for_checks_str and Path(local_src_arg).is_absolute():
-             local_src_for_checks_str = local_src_arg
+        # Handle case where local_src_arg might be just "/" or "C:/"
+        if not local_src_for_checks_str and Path(local_src_arg).is_absolute(): # e.g. user typed "C:/"
+             local_src_for_checks_str = local_src_arg # keep it as is for Path()
 
     abs_local_path = Path(os.path.abspath(local_src_for_checks_str))
 
@@ -302,26 +305,29 @@ def cmd_upload(local_src_arg, remote_dest_arg=None):
     is_local_file = abs_local_path.is_file()
     is_local_dir = abs_local_path.is_dir()
 
-    if not is_local_file and not is_local_dir:
+    if not is_local_file and not is_local_dir: # Should be caught by .exists() but as a safeguard
         print(f"Error: Local path '{local_src_arg}' is neither a file nor a directory.", file=sys.stderr)
         sys.exit(1)
 
-    # mpremote_local_source_arg is what mpremote will use for the source.
-    # It should retain trailing slash if user meant to copy contents of a dir.
-    if is_local_file and had_trailing_slash_local:
-        print(f"Warning: Trailing slash on a local file path '{local_src_arg}' is ignored. Treating as file '{abs_local_path.name}'.")
-        mpremote_local_source_arg = str(abs_local_path) # Use resolved absolute path for files
-    elif is_local_dir and not had_trailing_slash_local: # Uploading the directory itself
-        mpremote_local_source_arg = str(abs_local_path) # Use resolved absolute path
-    elif is_local_dir and had_trailing_slash_local: # Uploading contents of the directory
-        # mpremote needs the trailing slash for its 'cp dir/' logic
-        mpremote_local_source_arg = str(abs_local_path) + os.sep
-    else: # is_local_file (no slash originally)
-        mpremote_local_source_arg = str(abs_local_path)
-
+    # Determine the correct mpremote source string based on type and trailing slash intent
+    # mpremote expects forward slashes, and a trailing '/' on a source dir means "copy contents"
+    actual_mpremote_src_str: str
+    if is_local_file:
+        actual_mpremote_src_str = abs_local_path.as_posix()
+        if had_trailing_slash_local:
+            print(f"Warning: Trailing slash on local file path '{local_src_arg}' ignored for upload of file '{abs_local_path.name}'.")
+    elif is_local_dir:
+        if had_trailing_slash_local: # User wants to copy contents, e.g., local_src_arg was "test/"
+            actual_mpremote_src_str = abs_local_path.as_posix().rstrip('/') + '/' # Ensure one trailing /
+        else: # User wants to copy the directory itself, e.g., local_src_arg was "test"
+            actual_mpremote_src_str = abs_local_path.as_posix().rstrip('/') # Ensure no trailing /
+    else: # Should not be reached due to earlier checks
+        print(f"Error: Unhandled local source type for '{local_src_arg}'.", file=sys.stderr)
+        sys.exit(1)
 
     effective_remote_parent_dir_str = ""
     if remote_dest_arg:
+        # Normalize remote destination to use forward slashes and remove leading/trailing ones for dir ensuring logic
         effective_remote_parent_dir_str = remote_dest_arg.replace(os.sep, "/").strip("/")
         
     if effective_remote_parent_dir_str:
@@ -331,12 +337,12 @@ def cmd_upload(local_src_arg, remote_dest_arg=None):
 
     if is_local_file:
         local_file_basename = abs_local_path.name
+        # Construct target path on device, always using forward slashes
         mpremote_target_path_on_device = f":{effective_remote_parent_dir_str}/{local_file_basename}" if effective_remote_parent_dir_str else f":{local_file_basename}"
-        
+        mpremote_target_path_on_device = mpremote_target_path_on_device.replace("//", "/") # Sanitize if parent_dir was empty then became /
+
         print(f"Uploading file '{local_src_arg}' to '{mpremote_target_path_on_device}' on device...")
-        # For file upload, mpremote_local_source_arg should be the specific file path.
-        # Using abs_local_path ensures mpremote can find it regardless of CWD.
-        cp_args = ["fs", "cp", str(abs_local_path), mpremote_target_path_on_device]
+        cp_args = ["fs", "cp", actual_mpremote_src_str, mpremote_target_path_on_device]
         result = run_mpremote_command(cp_args, suppress_output=True)
         
         if result and result.returncode == 0:
@@ -348,16 +354,16 @@ def cmd_upload(local_src_arg, remote_dest_arg=None):
             sys.exit(1)
 
     elif is_local_dir:
-        if had_trailing_slash_local:
-            # Upload contents of local_dir_path/ to :effective_remote_parent_dir_str/
-            # mpremote cp -r local_dir/ :/remote_target_dir/
-            mpremote_target_dir_for_contents_spec_str = f":{effective_remote_parent_dir_str}/" if effective_remote_parent_dir_str else ":/"
-            
-            print(f"Uploading contents of local directory '{local_src_arg}' to '{mpremote_target_dir_for_contents_spec_str}' on device...")
-            
-            # mpremote_local_source_arg is already abs_local_path + os.sep
-            cp_args = ["fs", "cp", "-r", mpremote_local_source_arg, mpremote_target_dir_for_contents_spec_str]
-            result = run_mpremote_command(cp_args, suppress_output=True) # mpremote handles iteration
+        # Determine the mpremote destination argument
+        # If remote_dest is specified (e.g. "somedir"), target is ":somedir/"
+        # If remote_dest is not specified, target is ":/" (root)
+        mpremote_remote_target_base_dir = f":{effective_remote_parent_dir_str}/" if effective_remote_parent_dir_str else ":/"
+        
+        if had_trailing_slash_local: # Upload contents of local_dir_path/ to mpremote_remote_target_base_dir
+            print(f"Uploading contents of local directory '{local_src_arg}' to '{mpremote_remote_target_base_dir}' on device...")
+            # actual_mpremote_src_str is already abs_local_path.as_posix() + '/'
+            cp_args = ["fs", "cp", "-r", actual_mpremote_src_str, mpremote_remote_target_base_dir]
+            result = run_mpremote_command(cp_args, suppress_output=True)
 
             if result and result.returncode == 0:
                 print(f"Contents of '{local_src_arg}' uploaded successfully.")
@@ -366,15 +372,14 @@ def cmd_upload(local_src_arg, remote_dest_arg=None):
                 if result and not err_msg and result.stdout: err_msg = result.stdout.strip()
                 print(f"Error uploading contents of '{local_src_arg}': {err_msg}", file=sys.stderr)
                 sys.exit(1)
-        else:
-            # Upload local_dir itself into :effective_remote_parent_dir_str/
-            # mpremote cp -r local_dir :/remote_parent/  => results in :/remote_parent/local_dir_basename/...
-            mpremote_target_parent_dir_spec_str = f":{effective_remote_parent_dir_str}/" if effective_remote_parent_dir_str else ":/"
+        else: # Upload local_dir itself into mpremote_remote_target_base_dir
+              # mpremote cp -r local_dir :/remote_parent/  => results in :/remote_parent/local_dir_basename/...
             local_dir_basename = abs_local_path.name
-
-            print(f"Uploading directory '{local_src_arg}' to '{mpremote_target_parent_dir_spec_str}{local_dir_basename}' on device...")
-            # mpremote_local_source_arg is abs_local_path (no trailing slash)
-            cp_args = ["fs", "cp", "-r", mpremote_local_source_arg, mpremote_target_parent_dir_spec_str]
+            # The target for mpremote is the PARENT directory on the device.
+            # mpremote will create 'local_dir_basename' inside this parent.
+            print(f"Uploading directory '{local_src_arg}' to '{mpremote_remote_target_base_dir}{local_dir_basename}' on device...")
+            # actual_mpremote_src_str is abs_local_path.as_posix() (no trailing slash)
+            cp_args = ["fs", "cp", "-r", actual_mpremote_src_str, mpremote_remote_target_base_dir]
             result = run_mpremote_command(cp_args, suppress_output=True)
             
             if result and result.returncode == 0:
@@ -384,7 +389,7 @@ def cmd_upload(local_src_arg, remote_dest_arg=None):
                 if result and not err_msg and result.stdout: err_msg = result.stdout.strip()
                 print(f"Error uploading directory '{local_src_arg}': {err_msg}", file=sys.stderr)
                 sys.exit(1)
-    else:
+    else: # Should not be reached
         print(f"Error: Unhandled local source type for '{local_src_arg}'.", file=sys.stderr)
         sys.exit(1)
 
@@ -463,14 +468,18 @@ def cmd_download(remote_src_arg, local_dest_arg=None):
     else:
         mpremote_remote_source_str = f":{path_for_stat}"
         if had_trailing_slash_remote and remote_type == "dir":
-            mpremote_remote_source_str += "/"
+            mpremote_remote_source_str += "/" # Append / for "contents of" for mpremote
     
     # 4. Construct mpremote command and run
     cp_args = ["fs", "cp"]
     if remote_type == "dir":
         cp_args.append("-r")
     
+    # Ensure local destination path uses OS-specific separators for mpremote.
+    # final_mpremote_local_dest_str is already absolute.
+    # For mpremote, paths can generally be passed as is, it should handle them.
     cp_args.extend([mpremote_remote_source_str, final_mpremote_local_dest_str])
+
 
     # Print informative message
     if remote_type == "file":
@@ -524,32 +533,20 @@ def upload_all():
 
     for item_name in items_to_upload:
         item_path_obj = Path(item_name)
-        abs_item_path_str = str(item_path_obj.resolve()) # Use absolute path for mpremote source
+        # Use resolved absolute path, converted to POSIX for mpremote source consistency
+        abs_item_path_posix = item_path_obj.resolve().as_posix() 
         
         print(f"  Uploading '{item_name}' to ':{item_name}'...")
-        cp_args = ["fs", "cp"]
-        if item_path_obj.is_dir():
-            cp_args.append("-r")
-        # Target is :/item_name for files, or :/ for dirs (mpremote creates dir_name inside)
-        # For dirs, cp -r local_dir :/ creates :/local_dir
-        # For files, cp local_file :/file_name creates :/file_name
-        # The target for mpremote cp should be the container or the final name.
-        # To place items at root using their names:
-        if item_path_obj.is_dir():
-            # cp -r abs_item_path_str :/  -> will create /abs_item_path_str on device. We want /item_name
-            # So, source should be item_name (relative) if CWD is '.', or its full path.
-            # Destination is :/ (mpremote then creates item_name in root)
-             target_on_device = ":/" # mpremote will use basename of source
-        else:
-             target_on_device = f":{item_path_obj.name}"
-
-
-        current_item_source_for_mpremote = abs_item_path_str
-
+        
         final_cp_args = ["fs", "cp"]
         if item_path_obj.is_dir():
             final_cp_args.append("-r")
-        # The source for mpremote is the local item.
+            # For uploading a directory itself, ensure its source path for mpremote does not end with /
+            # unless its contents were intended (which is not the case for upload_all logic here)
+            current_item_source_for_mpremote = abs_item_path_posix.rstrip('/')
+        else:
+            current_item_source_for_mpremote = abs_item_path_posix
+
         # The destination for mpremote is the parent directory on the device (e.g. ":/")
         # mpremote will then create the item with its name inside that parent.
         final_cp_args.extend([current_item_source_for_mpremote, ":/"])
@@ -606,42 +603,73 @@ def list_remote_capture(remote_dir_arg=None):
 
     path_for_walk = f"/{remote_dir_arg.strip('/')}" if remote_dir_arg and remote_dir_arg.strip('/') else "/"
     
+    # Ensure path_for_walk ends with / if it's a directory other than root, for uos.ilistdir consistency
+    # Root "/" is fine. "/somedir" should ideally be "/somedir/" for _walk's path joining.
+    # However, the current _walk logic `base_path + '/' + name` handles it.
+    # base_path = p.rstrip('/') 
+    # item_full_path = base_path + '/' + name if base_path != '' and base_path != '/' else '/' + name
+    # if base_path == '/': item_full_path = '/' + name # handles root listing better
+
     code = f"""\\
 import uos
+import sys # Import sys for stderr
 def _walk(p):
     try:
-        items = uos.ilistdir(p) 
+        # Ensure p for ilistdir is correctly formatted (e.g. '/' or '/somedir')
+        # uos.ilistdir behavior with trailing slashes can vary slightly by port.
+        # For MicroPython official, uos.ilistdir('.') or uos.ilistdir('/') or uos.ilistdir('somedir') work.
+        current_path_for_ilistdir = p
+        if not current_path_for_ilistdir: current_path_for_ilistdir = "." # Should not happen with current logic
+        elif current_path_for_ilistdir != '/' and current_path_for_ilistdir.endswith('/'):
+             current_path_for_ilistdir = current_path_for_ilistdir.rstrip('/')
+
+
+        items = uos.ilistdir(current_path_for_ilistdir) 
     except OSError as e:
+        # ENOENT (2): No such file or directory
+        # EACCES (13): Permission denied (less common for basic listing)
+        # EINVAL (22): Invalid argument (e.g. listing a file)
         if e.args[0] == 2: # ENOENT
-            print("Error: Directory '" + p + "' not found for listing.", file=sys.stderr)
-        else:
+            # Suppress "Error: Directory..." from here, let caller handle non-existence if needed.
+            # print("Error: Directory '" + p + "' not found for listing.", file=sys.stderr)
+            pass # Caller (list_remote/tree_remote) should check existence first.
+        elif e.args[0] == 22 and p != '/': # EINVAL, and not root (root is always a dir)
+            # This means 'p' was likely a file. uos.stat should catch this.
+            # print("Error: Path '" + p + "' is likely a file, not a directory.", file=sys.stderr)
+            pass
+        else: # Other OSError
             print("Error listing directory '" + p + "': " + str(e), file=sys.stderr)
         return
+
     for name, typ, *_ in items:
-        base_path = p.rstrip('/')
-        item_full_path = base_path + '/' + name if base_path != '' and base_path != '/' else '/' + name
-        if base_path == '/': item_full_path = '/' + name # handles root listing better
+        # Construct absolute path for the item
+        # p is absolute path to directory being walked, e.g. "/", "/lib"
+        if p == "/":
+            item_full_path = "/" + name
+        else:
+            # p is like "/lib", name is "foo.py" -> "/lib/foo.py"
+            item_full_path = p.rstrip('/') + "/" + name
+        
         print(item_full_path) 
-        if typ == 0x4000: # STAT_DIR
-            _walk(item_full_path)
+        if typ == 0x4000: # S_IFDIR (directory)
+            _walk(item_full_path) # Recurse into subdirectory
+
 _walk('{path_for_walk}')
 """
-    # print(f"Executing for list_remote_capture: {code}") # Debug
     lines = run_cmd_output(["exec", code])
-    # Filter out potential error messages printed to stdout by the script
+    # Filter out potential error messages printed to stdout by the script's print(file=sys.stderr)
+    # that might be redirected if mpremote mixes streams in some cases (though unlikely for exec)
+    # More importantly, filter lines that are not valid absolute paths.
     return [line for line in lines if line.startswith('/') and not line.startswith("Error:")]
 
 
 def list_remote(remote_dir=None):
     global DEVICE_PORT
     normalized_remote_dir = (remote_dir or "").strip("/")
-    # For display and get_remote_path_stat, if it's root, normalized_remote_dir will be ""
-    # For list_remote_capture, "" means root.
-    
     display_dir_name = f":{normalized_remote_dir or '/'}"
-    path_for_stat_check = normalized_remote_dir # "" for root, "dir" for a dir
+    path_for_stat_check = normalized_remote_dir 
 
-    if path_for_stat_check: # Not root, check if it exists and is a dir
+    if path_for_stat_check: 
         path_type, _ = get_remote_path_stat(path_for_stat_check)
         if path_type is None:
             print(f"Error: Remote path '{display_dir_name}' not found.", file=sys.stderr)
@@ -651,68 +679,41 @@ def list_remote(remote_dir=None):
             return
     
     print(f"Listing contents of '{display_dir_name}'...")
-    # list_remote_capture expects "" for root, or "somedir"
+    # list_remote_capture expects "" for root, or "somedir" (without leading/trailing slashes from caller)
     all_paths_abs = list_remote_capture(normalized_remote_dir if normalized_remote_dir else None)
 
 
     if not all_paths_abs:
-        # Check if the directory itself actually exists, or if list_remote_capture had an issue
-        # (e.g. permission error, though get_remote_path_stat should catch non-existence)
-        # If path_for_stat_check is empty (root), it always exists.
-        # if path_for_stat_check and get_remote_path_stat(path_for_stat_check)[0] is None:
-        #     # This case should be caught by the initial check
-        #     pass 
-        # else:
         print(f"Directory '{display_dir_name}' is empty or no items found.")
         return
     
-    # Prepare for potentially displaying a subset if remote_dir was specified
-    # all_paths_abs contains absolute paths like /foo, /foo/bar
-    # If normalized_remote_dir is "foo", we want to show "foo/bar" as "bar" relative to "foo" (or keep absolute)
-    # The current implementation lists absolute paths that are AT or UNDER the target.
-    
-    # If listing root (normalized_remote_dir is ""), show all absolute paths.
-    # If listing a subdir (e.g., "foo"), show paths like "/foo/file.txt", "/foo/bar/baz.txt"
-    # The request seems to be to list them as they are (absolute).
-    
-    # The original list_remote logic was a bit complex with stripping prefixes.
-    # Let's simplify: just print the absolute paths that are relevant.
-    
-    # If normalized_remote_dir is empty (listing root):
-    # Print all items directly (e.g. /main.py, /lib/)
-    # If normalized_remote_dir is "lib" (listing /lib):
-    # Print only items starting with "/lib/" (e.g. /lib/utils.py)
+    paths_to_print = []
+    # Define the base directory for making paths relative.
+    # If remote_dir was None or "/", base_for_relativity is Path("/").
+    # If remote_dir was "lib", base_for_relativity is Path("/lib").
+    base_for_relativity = Path("/") / normalized_remote_dir
 
-    printed_any = False
-    if not normalized_remote_dir: # Listing root
-        for path_str in sorted(all_paths_abs):
-             # Only print top-level items for root listing, not recursive items from sub-folders
-            if Path(path_str).parent == Path('/'):
-                print(path_str.lstrip('/')) # e.g. main.py, lib
-                printed_any = True
-    else: # Listing a subdirectory
-        # We need to list items *directly within* normalized_remote_dir
-        # And also recursively if that was the old behavior (list_remote_capture is recursive)
-        # The prompt's "ls" is typically non-recursive for the top level.
-        # However, the previous `list_remote` using `list_remote_capture` was effectively recursive.
-        # Let's stick to showing all captured (recursive) paths that fall under the specified dir.
-        prefix_to_match = f"/{normalized_remote_dir}/"
-        direct_match = f"/{normalized_remote_dir}" # For the directory itself if it were listed somehow
+    for abs_path_str in sorted(all_paths_abs):
+        try:
+            current_abs_path = Path(abs_path_str)
+            relative_path = current_abs_path.relative_to(base_for_relativity)
+            paths_to_print.append(str(relative_path))
+        except ValueError:
+            # Fallback if not relative (should ideally not happen if list_remote_capture is correct)
+            paths_to_print.append(abs_path_str.lstrip('/'))
 
-        for path_str in sorted(all_paths_abs):
-            if path_str.startswith(prefix_to_match) or path_str == direct_match:
-                # Display path relative to the listed directory, or absolute?
-                # User expectation for "ls /foo" is to see "bar.py", not "/foo/bar.py"
-                # But list_remote_capture gives absolute.
-                # The original code `print(path_str.lstrip('/'))` prints `foo/bar.py`
-                print(path_str.lstrip('/')) 
-                printed_any = True
-            # If normalized_remote_dir is, say, "foo", and path_str is "/foo" (the dir itself)
-            # this logic might not directly list it. list_remote_capture lists *contents*.
-            # Let's assume list_remote_capture works as intended for now.
-
-    if not printed_any:
-         print(f"Directory '{display_dir_name}' is empty or no matching items found by the current filter.")
+    if not paths_to_print and all_paths_abs: # Should not happen if all_paths_abs had items
+        print(f"Warning: Path processing issue for '{display_dir_name}'. Raw paths found:")
+        for p_abs_str in sorted(all_paths_abs): print(p_abs_str)
+        return
+    
+    # Filter out "." if it's the only thing and represents the listed dir itself,
+    # or if other items exist. Usually, users expect contents, not "." for the dir.
+    # uos.ilistdir lists contents, so "." representing the dir itself shouldn't appear
+    # from list_remote_capture. Paths like "file.py" or "subdir/file.py" are expected.
+    
+    for p_out in sorted(list(set(paths_to_print))): # set for unique, then sort
+        print(p_out)
 
 
 def tree_remote(remote_dir=None):
@@ -734,45 +735,52 @@ def tree_remote(remote_dir=None):
     lines_abs = list_remote_capture(base_path_str_norm if base_path_str_norm else None) 
     
     if not lines_abs:
-        print(f"Directory '{display_root_name}' is empty.")
+        # If listing root and it's empty, print "." and return.
+        if not base_path_str_norm:
+            print(".")
+        else: # Listed a subdirectory that is empty
+            print(f". ({base_path_str_norm})") # Still print the root of the tree
+        # print(f"Directory '{display_root_name}' is empty.") # This is implicitly handled by print_tree_nodes not iterating.
         return
 
-    # paths_for_tree_build should be relative to the base_path_str_norm
+
     paths_for_tree_build = []
-    if not base_path_str_norm: # Tree from root
-        # lines_abs are like "/foo", "/foo/bar.py". Path objects: "foo", "foo/bar.py"
-        paths_for_tree_build = [Path(p.lstrip('/')) for p in lines_abs if p != "/"]
-    else: # Tree from a subdirectory e.g. "lib"
-        # lines_abs are like "/lib/one.py", "/lib/sub/two.py"
-        # We want Path("one.py"), Path("sub/two.py")
-        prefix_to_remove = f"/{base_path_str_norm}/"
-        len_prefix = len(prefix_to_remove)
-        for line_abs in lines_abs:
-            if line_abs.startswith(prefix_to_remove):
-                relative_part = line_abs[len_prefix:]
-                if relative_part: # Ensure not empty if line_abs was just prefix_to_remove (unlikely)
-                    paths_for_tree_build.append(Path(relative_part))
-            # elif line_abs == f"/{base_path_str_norm}": # If the dir itself is in the list (not typical for ilistdir contents)
-            #     pass # Don't add empty path
+    # Determine the base Path object for making paths relative for tree construction
+    # If base_path_str_norm is "", relative base is Path("/")
+    # If base_path_str_norm is "lib", relative base is Path("/lib")
+    relative_base_for_tree = Path("/") / base_path_str_norm
 
-    if not paths_for_tree_build :
-        print(f"Directory '{display_root_name}' contains no listable items for tree display.")
-        return
+    for line_abs_str in lines_abs:
+        try:
+            p_abs = Path(line_abs_str)
+            p_relative = p_abs.relative_to(relative_base_for_tree)
+            if str(p_relative) != ".": # Avoid adding "." if the dir itself was listed
+                 paths_for_tree_build.append(p_relative)
+        except ValueError: # Should not happen
+            # Fallback: use path relative to root if it's not under the specified dir
+            paths_for_tree_build.append(Path(line_abs_str.lstrip('/')))
+
+
+    if not paths_for_tree_build and not lines_abs : # Only if lines_abs was empty initially
+        # This case is already handled by the `if not lines_abs:` check above.
+        # If lines_abs had items but paths_for_tree_build is empty (e.g. all were ".")
+        # then structure will be empty and print_tree_nodes will do nothing under the root print.
+        pass
+    
+    # If paths_for_tree_build is empty after processing (e.g. directory was truly empty, or only contained itself somehow)
+    # The tree root will print, and then nothing under it, which is correct for an empty dir.
+
 
     structure = {}
-    # Sort paths by parts to ensure parents are processed first (though setdefault handles it)
     sorted_paths_for_tree = sorted(list(set(paths_for_tree_build)), key=lambda p: p.parts)
 
     for p_obj in sorted_paths_for_tree:
         current_level = structure
-        parts = [part for part in p_obj.parts if part and part != '/']
+        # parts = [part for part in p_obj.parts if part and part != '/'] # p_obj is already relative
+        parts = p_obj.parts
         if not parts: continue
 
         for part_idx, part in enumerate(parts):
-            is_last_part = (part_idx == len(parts) - 1)
-            # If it's the last part, and the original path p_obj represents this part directly
-            # (i.e., p_obj itself is not a directory leading to further parts in other paths),
-            # mark it distinctly if needed, but setdefault to {} is fine.
             current_level = current_level.setdefault(part, {})
             
     def print_tree_nodes(node, prefix=""):
@@ -780,15 +788,14 @@ def tree_remote(remote_dir=None):
         for i, child_name in enumerate(children_names):
             connector = "└── " if i == len(children_names) - 1 else "├── "
             print(f"{prefix}{connector}{child_name}")
-            if node[child_name]: # If it has further children, recurse
+            if node[child_name]: 
                 new_prefix = prefix + ("    " if i == len(children_names) - 1 else "│   ")
                 print_tree_nodes(node[child_name], new_prefix)
 
-    # Print root of the tree display
     if not base_path_str_norm:
         print(".") 
     else:
-        print(f". ({base_path_str_norm})")
+        print(f".") # Display name of listed dir is already in "Tree for ':{...}'"
     
     print_tree_nodes(structure, "")
 
@@ -805,40 +812,44 @@ def delete_remote(remote_path_arg):
             return
 
         print("Fetching root directory contents for deletion...")
-        # Using mpremote ls : as it's simpler than exec for just names at root
-        ls_result = run_mpremote_command(["fs", "ls", ":"], suppress_output=True, timeout=10)
         
-        if not ls_result or ls_result.returncode != 0:
-            err = ls_result.stderr.strip() if ls_result and ls_result.stderr else "Failed to connect or list root."
-            print(f"Error listing root directory for deletion: {err}", file=sys.stderr)
-            sys.exit(1)
+        # Use uos.ilistdir for robustness in getting item names
+        code = "import uos; print([item[0] for item in uos.ilistdir('/') if item[0] not in ('.', '..')])"
+        result = run_mpremote_command(["exec", code], suppress_output=True, timeout=15)
 
-        # Process ls output: "  item1\r\n  item2\r\n" or "  123 item1\r\n" (from some versions)
-        # We only want the names.
         items_to_delete_from_root = []
-        if ls_result.stdout:
-            for line in ls_result.stdout.splitlines():
-                line_content = line.strip()
-                if not line_content: continue
-                # Remove potential size prefix if mpremote ls output includes it (e.g. "123 item_name")
-                parts = line_content.split(maxsplit=1)
-                if len(parts) == 2 and parts[0].isdigit():
-                    items_to_delete_from_root.append(parts[1])
+        if result and result.returncode == 0 and result.stdout:
+            try:
+                # eval is used here for simplicity, assuming controlled output from exec.
+                # For production, json.loads(result.stdout.strip()) would be safer if output is json.
+                raw_list = eval(result.stdout.strip()) 
+                if isinstance(raw_list, list):
+                    items_to_delete_from_root = [str(item) for item in raw_list] # Ensure all are strings
                 else:
-                    items_to_delete_from_root.append(line_content) # Assume whole line is name
+                    raise ValueError("Parsed output from device was not a list.")
+            except Exception as e:
+                print(f"Error parsing directory listing from device for deletion: {e}", file=sys.stderr)
+                print(f"Raw output: {result.stdout.strip()}", file=sys.stderr)
+                sys.exit(1)
+        elif not result or result.returncode != 0:
+            err = result.stderr.strip() if result and result.stderr else "Failed to connect or list root via exec."
+            print(f"Error fetching root directory contents for deletion: {err}", file=sys.stderr)
+            sys.exit(1)
         
         if not items_to_delete_from_root:
-            print("Root directory is already empty or no items found by ls.")
+            print("Root directory is already empty or no deletable items found.")
             return
 
         print(f"Items to delete from root: {items_to_delete_from_root}")
         all_successful = True
         for item_name_to_delete in items_to_delete_from_root:
-            item_target_for_mpremote = ":" + item_name_to_delete # Already relative to root
+            # uos.ilistdir returns names like 'file.txt' or 'somedir'
+            # mpremote target needs to be ':/file.txt' or ':/somedir'
+            item_target_for_mpremote = ":/" + item_name_to_delete.lstrip('/') 
             
             print(f"Deleting '{item_target_for_mpremote}'...")
-            # Use -r for directories, but fs rm also works on files without -r.
-            # To be safe and handle both files and dirs listed by `ls :`
+            # Always use -r with rm, as mpremote fs rm -r works for both files and dirs.
+            # This simplifies logic as we don't need to stat each item type before deleting.
             del_result = run_mpremote_command(["fs", "rm", "-r", item_target_for_mpremote], suppress_output=True)
             
             if del_result and del_result.returncode == 0:
@@ -855,23 +866,17 @@ def delete_remote(remote_path_arg):
             sys.exit(1) 
     else: 
         # Delete specific file or directory
-        normalized_path_for_stat = remote_path_arg.strip('/') # for get_remote_path_stat
-        mpremote_target_path = ":" + normalized_path_for_stat   # for mpremote command
+        normalized_path_for_stat = remote_path_arg.strip('/') 
+        mpremote_target_path = ":" + normalized_path_for_stat   
 
         path_type, _ = get_remote_path_stat(normalized_path_for_stat)
 
         if path_type is None:
             print(f"Error: Remote path '{mpremote_target_path}' does not exist on device.", file=sys.stderr)
-            # Changed from return to sys.exit(1) for consistency, as delete implies it should exist
             sys.exit(1) 
 
         print(f"Deleting '{mpremote_target_path}' ({path_type})...")
-        # fs rm works for files. fs rm -r for directories (and also files).
-        # Using -r is safer if we don't strictly need to differentiate command.
-        del_args = ["fs", "rm"]
-        if path_type == "dir": # Only add -r if we know it's a directory
-            del_args.append("-r")
-        del_args.append(mpremote_target_path)
+        del_args = ["fs", "rm", "-r", mpremote_target_path] # Use -r for both files and dirs for simplicity
         
         del_result = run_mpremote_command(del_args, suppress_output=True)
 
@@ -895,7 +900,7 @@ def cmd_flash(firmware_source, baud_rate_str="460800"):
 
     if firmware_source == DEFAULT_FIRMWARE_URL or "micropython.org/resources/firmware/" in firmware_source: # Check against actual source used
         print(f"Using official default firmware URL: {firmware_source}")
-        print("If you have a specific firmware .bin URL or local file, please provide it as an argument to the flash command.")
+        # print("If you have a specific firmware .bin URL or local file, please provide it as an argument to the flash command.") # A bit verbose
 
     print("\nIMPORTANT: Ensure your ESP32-C3 is in bootloader mode.")
     print("To do this: Unplug USB, press and HOLD the BOOT button, plug in USB, wait 2-3 seconds, then RELEASE BOOT button.")
@@ -933,10 +938,14 @@ def cmd_flash(firmware_source, baud_rate_str="460800"):
                     downloaded_size = 0
                     chunk_size = 8192 # 8KB
                     
-                    # Simple progress tracking
-                    progress_ticks = 0
+                    progress_ticks_displayed = 0
                     sys.stdout.write("Downloading: [")
+                    # Ten # symbols for progress
+                    num_progress_symbols = 20 
+                    for _ in range(num_progress_symbols): sys.stdout.write(" ") # placeholder for bar
+                    sys.stdout.write("] 0%")
                     sys.stdout.flush()
+
 
                     while True:
                         chunk = response.read(chunk_size)
@@ -946,20 +955,20 @@ def cmd_flash(firmware_source, baud_rate_str="460800"):
                         downloaded_size += len(chunk)
 
                         if total_size:
-                            # More responsive progress bar
-                            current_progress_pct = (downloaded_size / total_size) * 100
-                            # Update bar every 5% or so
-                            if int(current_progress_pct / 5) > progress_ticks:
-                                sys.stdout.write("#")
-                                sys.stdout.flush()
-                                progress_ticks = int(current_progress_pct / 5)
+                            current_progress_pct = (downloaded_size / total_size)
+                            ticks_to_show = int(current_progress_pct * num_progress_symbols)
+                            
+                            sys.stdout.write("\rDownloading: [")
+                            sys.stdout.write("#" * ticks_to_show)
+                            sys.stdout.write(" " * (num_progress_symbols - ticks_to_show))
+                            sys.stdout.write(f"] {int(current_progress_pct * 100)}%")
+                            sys.stdout.flush()
                         else: # No total size, just show dots
-                            if downloaded_size // (chunk_size * 10) > progress_ticks : # roughly every 80KB
-                                sys.stdout.write(".")
-                                sys.stdout.flush()
-                                progress_ticks +=1
+                             # Simple animation with dots
+                            sys.stdout.write("\rDownloading: [" + "." * ( (downloaded_size // (chunk_size*5)) % (num_progress_symbols-1) ) + " " * ( (num_progress_symbols-1) - ( (downloaded_size // (chunk_size*5)) % (num_progress_symbols-1) ) ) + "] Size unknown")
+                            sys.stdout.flush()
                     
-                    sys.stdout.write("] Done.\n")
+                    sys.stdout.write("\rDownloading: [" + "#" * num_progress_symbols + f"] {100 if total_size else 'OK'}%\n") # Finalize progress
                     sys.stdout.flush()
                     actual_firmware_file_to_flash = tmp_file.name
                     downloaded_temp_file = actual_firmware_file_to_flash
@@ -983,15 +992,14 @@ def cmd_flash(firmware_source, baud_rate_str="460800"):
 
         print(f"\nStep 1: Erasing flash on {DEVICE_PORT}...")
         erase_args = ["--chip", "esp32c3", "--port", DEVICE_PORT, "erase_flash"]
-        erase_result = run_esptool_command(erase_args) # Suppress output is False by default
+        erase_result = run_esptool_command(erase_args) 
         if not erase_result or erase_result.returncode != 0:
             err_msg = erase_result.stderr.strip() if erase_result and erase_result.stderr else "Erase command failed."
-            # esptool already prints detailed errors, so our message can be simpler.
-            print(f"Error erasing flash. esptool said: {err_msg}", file=sys.stderr)
+            print(f"Error erasing flash. esptool output implies: {err_msg}", file=sys.stderr)
             if "A fatal error occurred: Could not connect to an Espressif device" in err_msg or \
                "Failed to connect to ESP32-C3" in err_msg :
-                 print("This commonly indicates the device is not in bootloader mode or a connection issue.", file=sys.stderr)
-                 print("Please ensure you have followed the BOOT button procedure correctly.", file=sys.stderr)
+                 print("Common cause: Device not in bootloader mode or connection issue.", file=sys.stderr)
+                 print("Please ensure the BOOT button procedure was followed correctly.", file=sys.stderr)
             sys.exit(1)
         print("Flash erase completed successfully.")
 
@@ -1001,14 +1009,13 @@ def cmd_flash(firmware_source, baud_rate_str="460800"):
             "--port", DEVICE_PORT,
             "--baud", baud_rate_str,
             "write_flash",
-            #"-fm", "dio", "-fs", "detect", # Common options, but MicroPython bin usually self-contains
-            "-z", "0x0", # Flash from offset 0
+            "-z", "0x0", 
             actual_firmware_file_to_flash
         ]
         write_result = run_esptool_command(write_args)
         if not write_result or write_result.returncode != 0:
             err_msg = write_result.stderr.strip() if write_result and write_result.stderr else "Write flash command failed."
-            print(f"Error writing firmware. esptool said: {err_msg}", file=sys.stderr)
+            print(f"Error writing firmware. esptool output implies: {err_msg}", file=sys.stderr)
             sys.exit(1)
         print("Firmware writing completed successfully.")
 
@@ -1021,7 +1028,7 @@ def cmd_flash(firmware_source, baud_rate_str="460800"):
         print(msg)
         if not verified:
             print("MicroPython verification failed. The board may not have rebooted correctly, or flashing was unsuccessful despite esptool's report.", file=sys.stderr)
-            print("Try manually resetting the device (unplug/replug or reset button if available) and then 'esp32 device' to test communication.", file=sys.stderr)
+            print("Try manually resetting the device and then 'esp32 device' to test communication.", file=sys.stderr)
             sys.exit(1)
         
         print("\nMicroPython flashed and verified successfully!")
@@ -1070,19 +1077,14 @@ def main():
     up_parser.add_argument("local_source", help="Local file/dir. Trailing '/' on dir uploads its contents.")
     up_parser.add_argument("remote_destination", nargs='?', default=None, help="Remote parent directory path. If omitted, uploads to root.")
     
-    # New download parser
     dl_parser = subparsers.add_parser("download", help="Download file/directory from ESP32. Replaces download_file and download_all.")
     dl_parser.add_argument("remote_source_path", metavar="REMOTE_PATH", help="Remote file/dir path. Trailing '/' on dir downloads its contents (e.g., '/logs/', '//' for root contents).")
     dl_parser.add_argument("local_target_path", nargs='?', default=None, metavar="LOCAL_PATH", help="Local directory to download into, or local filename for a single remote file. If omitted, uses current directory.")
 
     run_parser = subparsers.add_parser("run", help="Run Python script on ESP32.")
     run_parser.add_argument("script_name", nargs='?', default="main.py", metavar="SCRIPT", help="Script to run (default: main.py). Path is relative to device root.")
-    
-    # ls_parser is deprecated by list_parser, but kept for argcomplete if used.
-    # ls_parser = subparsers.add_parser("ls", help=argparse.SUPPRESS) 
-    # ls_parser.add_argument("remote_directory", nargs='?', default=None, metavar="REMOTE_DIR", help="Remote directory (default: root).")
-    
-    list_parser = subparsers.add_parser("list", help="List files/dirs on ESP32 (recursively from given path).") # Alias for ls
+        
+    list_parser = subparsers.add_parser("list", help="List files/dirs on ESP32 (recursively from given path).") 
     list_parser.add_argument("remote_directory", nargs='?', default=None, metavar="REMOTE_DIR", help="Remote directory path (e.g., '/lib', or omit for root).")
     
     tree_parser = subparsers.add_parser("tree", help="Display remote file tree.")
@@ -1102,23 +1104,19 @@ def main():
         "device", "upload", "run", "list", "tree", 
         "download", "delete", "upload_all_cwd", "flash"
     ]
-    # "ls" can be added back if its parser is not suppressed.
 
     is_device_command_setting_port = args.cmd == "device" and args.port_name
-    # is_device_command_testing_port = args.cmd == "device" and not args.port_name and DEVICE_PORT # Not used directly here
 
     if args.cmd in commands_needing_port and not DEVICE_PORT and not is_device_command_setting_port:
-        # Special handling for 'device' command without port_name (it's a query/test, might not need port yet)
         if args.cmd == "device" and not args.port_name:
-            pass # Will be handled by its own logic to show status or prompt.
-        elif args.cmd == "flash" and not DEVICE_PORT: # flash command has its own detailed port check message
-             cmd_flash(args.firmware_source, args.baud) # Will exit if port not set
-             sys.exit(0) # Should not reach here if cmd_flash exits
+            pass 
+        elif args.cmd == "flash" and not DEVICE_PORT:
+             cmd_flash(args.firmware_source, args.baud) 
+             sys.exit(0) 
         else:
             print("Error: No COM port selected or configured.", file=sys.stderr)
             print("Use 'esp32 devices' to list available ports, then 'esp32 device <PORT_NAME>' to set one.", file=sys.stderr)
-            if args.cmd not in ["help", "devices"]: # Avoid double listing if 'devices' was implicitly called
-                 # cmd_devices() # Optionally show devices again.
+            if args.cmd not in ["help", "devices"]:
                  pass
             sys.exit(1)
 
@@ -1134,13 +1132,12 @@ def main():
             ok, msg = test_device(DEVICE_PORT); print(msg)
         else: 
             print("No COM port currently selected or configured.")
-            cmd_devices() # Show available ports
+            cmd_devices() 
             print(f"\nUse 'esp32 device <PORT_NAME>' to set one.")
     elif args.cmd == "flash":
         cmd_flash(args.firmware_source, args.baud)
     elif args.cmd == "upload": cmd_upload(args.local_source, args.remote_destination)
     elif args.cmd == "run": run_script(args.script_name)
-    # elif args.cmd == "ls": list_remote(args.remote_directory) # If ls parser is active
     elif args.cmd == "list": list_remote(args.remote_directory)
     elif args.cmd == "tree": tree_remote(args.remote_directory)
     elif args.cmd == "download": cmd_download(args.remote_source_path, args.local_target_path)
