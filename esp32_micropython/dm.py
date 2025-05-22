@@ -382,8 +382,8 @@ def cmd_upload(local_src_arg, remote_dest_arg=None):
     else: 
         print(f"Error: Unhandled local source type for '{original_local_src_display}'.", file=sys.stderr)
         sys.exit(1)
-
-def cmd_download(remote_src_arg, local_dest_arg=None):
+        
+def cmd_download(remote_src_arg, local_dest_arg=None): # local_dest_arg is now always a target directory
     global DEVICE_PORT
     had_trailing_slash_remote = remote_src_arg.endswith("/")
     
@@ -409,21 +409,22 @@ def cmd_download(remote_src_arg, local_dest_arg=None):
 
     if remote_type == "file":
         remote_basename = Path(path_for_stat).name 
-        local_target_path_obj: Path
+        
+        target_local_directory: Path
         if local_dest_arg:
-            local_dest_path_obj = Path(os.path.abspath(local_dest_arg))
-            if local_dest_arg.endswith(("/", os.sep)) or local_dest_path_obj.is_dir():
-                local_dest_path_obj.mkdir(parents=True, exist_ok=True)
-                local_target_path_obj = local_dest_path_obj / remote_basename
-            else: 
-                local_dest_path_obj.parent.mkdir(parents=True, exist_ok=True)
-                local_target_path_obj = local_dest_path_obj
-        else: 
-            local_target_path_obj = Path.cwd() / remote_basename
+            target_local_directory = Path(os.path.abspath(local_dest_arg))
+        else: # No local_dest_arg, download to CWD
+            target_local_directory = Path.cwd()
+        
+        # Ensure target directory exists
+        target_local_directory.mkdir(parents=True, exist_ok=True)
+        time.sleep(FS_OPERATION_DELAY / 4) # Small delay after local mkdir
 
+        local_target_path_obj = target_local_directory / remote_basename
         final_mpremote_local_dest_str = str(local_target_path_obj).replace(os.sep, '/')
+        
         # For mpremote fs cp, source path needs to be :/path_from_root for non-root files
-        mpremote_remote_source_str = f":/{path_for_stat}" if path_for_stat else ":" # For root files, if any could exist (not typical)
+        mpremote_remote_source_str = f":/{path_for_stat}" if path_for_stat else ":" 
 
         print(f"Downloading remote file '{mpremote_remote_source_str}' to local path '{final_mpremote_local_dest_str}'...")
         cp_args = ["fs", "cp", mpremote_remote_source_str, final_mpremote_local_dest_str]
@@ -471,10 +472,8 @@ def cmd_download(remote_src_arg, local_dest_arg=None):
                  sys.exit(1)
 
         base_remote_path_obj = Path("/") / path_for_stat
-
         files_downloaded_count = 0
         dirs_created_count = 0
-        
         processed_items = [] 
         
         for remote_item_abs_str in sorted(list(set(all_remote_items_abs))):
@@ -486,10 +485,6 @@ def cmd_download(remote_src_arg, local_dest_arg=None):
                 else:
                     continue 
             local_target_path = local_base_dir_for_items / relative_to_download_base
-            
-            # Check type of remote_item_abs_str
-            # remote_item_abs_str from list_remote_capture includes trailing / for dirs.
-            # get_remote_path_stat expects path without leading / and without trailing / for its internal logic.
             item_type = get_remote_path_stat(remote_item_abs_str.lstrip('/').rstrip('/'))
             time.sleep(FS_OPERATION_DELAY / 4) 
 
@@ -523,8 +518,6 @@ def cmd_download(remote_src_arg, local_dest_arg=None):
     else: 
         print(f"Error: Unhandled remote source type '{remote_type}' for ':{path_for_stat or '/'}'.", file=sys.stderr)
         sys.exit(1)
-
-
 def run_script(script="main.py"):
     global DEVICE_PORT
     script_on_device_norm = script.strip('/') 
